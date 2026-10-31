@@ -25,7 +25,7 @@ CONTRACT_CFG = {
     "no_entries_before": "09:30", "no_entries_after": "14:30", "flat_by": "15:00",
     "fractional": False, "broker": "paper", "paper": True, "blocked": [],
     "allow_options": False, "allow_margin": False, "allow_short": False, "pdt_guard": False,
-    "charges": {"brokerage_per_order": 20, "brokerage_pct": 0.03, "stt_sell_pct": 0.025, "txn_pct": 0.00297,
+    "charges": {"brokerage_per_order": 20, "brokerage_pct": 0.03, "stt_sell_pct": 0.025, "txn_pct": 0.00297, "txn_pct_bse": 0.00375,
                 "sebi_pct": 0.0001, "stamp_buy_pct": 0.003, "gst_pct": 18},
 }
 # v1's rules, for the weights mode tests
@@ -104,6 +104,19 @@ class TheReel(unittest.TestCase):
         self.assertEqual(size.intraday_charges(80, 364.18, 358.32), 30.6)
         self.assertEqual(size.intraday_charges(1000, 1500, 1510), 578.74)  # Rs 20 a side cap, STT Rs 377.50
         self.assertEqual(size.intraday_charges(80, 364.18, 358.32, {"charges": {"brokerage_per_order": 0}}), 10.13)
+
+    def test_a_bse_symbol_pays_the_bse_fee_and_says_bse(self):
+        self.assertEqual(size.exchange_of("RELIANCE"), "NSE")
+        self.assertEqual(size.exchange_of("reliance.bo"), "BSE")
+        self.assertEqual(size.exchange_of("500325.BO"), "BSE")
+        nse = size.intraday_charges(1000, 1500, 1510)
+        bse = size.intraday_charges(1000, 1500, 1510, exchange="BSE")
+        self.assertEqual(round(bse - nse, 2), 27.7)          # (0.00375 - 0.00297) % of Rs 30.1 lakh = 23.48, plus 18 % GST
+        s = size.size_trade(plan(symbol="TSLA.BO"), cfg(), today=TODAY)
+        self.assertEqual(s["qty"], 80)
+        self.assertGreater(s["charges_at_stop"], 30.6)
+        self.assertEqual(size.bracket_order(s)["exchange"], "BSE")
+        self.assertEqual(size.bracket_order(size.size_trade(plan(), cfg(), today=TODAY))["exchange"], "NSE")
 
     def test_the_bracket_order(self):
         o = size.bracket_order(size.size_trade(plan(), cfg(), today=TODAY))

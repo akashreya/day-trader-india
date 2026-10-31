@@ -26,6 +26,7 @@
     "brokerage_pct": 0.03,
     "stt_sell_pct": 0.025,
     "txn_pct": 0.00297,
+    "txn_pct_bse": 0.00375,
     "sebi_pct": 0.0001,
     "stamp_buy_pct": 0.003,
     "gst_pct": 18

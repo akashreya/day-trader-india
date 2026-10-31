@@ -125,6 +125,15 @@ class TheReel(unittest.TestCase):
         self.assertEqual(check.intraday_charges(80, 364.18, 358.32), 30.6)
         self.assertEqual(check.intraday_charges(80, 364.18, 358.32, {"charges": False}), 0.0)
 
+    def test_a_bse_order_checks_with_the_bse_fee(self):
+        with open(TSLA_PATH) as fh:
+            o = json.load(fh)["orders"][0]
+        full = dict(cfg(), **json.load(open(CFG_PATH)))
+        r = check.check([dict(o, symbol="TSLA.BO", exchange="BSE")], full, now=at(NOW))["results"][0]
+        self.assertEqual(r["verdict"], "PASS", r["reasons"])
+        self.assertEqual(r["max_loss"], round(468.8 + check.intraday_charges(80, 364.18, 358.32, exchange="BSE"), 2))
+        self.assertGreater(r["max_loss"], 499.4)
+
     def test_the_fingerprint_is_the_exact_order(self):
         o = tsla()
         self.assertEqual(check.fingerprint(dict(o, why="anything", plan={})), check.fingerprint(o))

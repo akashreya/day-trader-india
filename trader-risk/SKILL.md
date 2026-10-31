@@ -86,7 +86,7 @@ How the numbers work:
   understate the risk at 10:40 after the price ran up. An older price is not
   used, and it says so.
 - **Charges**: brokerage (0.03% up to Rs 20 an order), STT 0.025% on the
-  sell, NSE 0.00297%, SEBI 0.0001%, stamp duty 0.003% on the buy and 18% GST,
+  sell, NSE 0.00297% (BSE 0.00375% for a `.BO` symbol), SEBI 0.0001%, stamp duty 0.003% on the buy and 18% GST,
   the same rates as trader-budget (`"charges"` in the config; `false` turns
   them off). Your contract note is the truth.
 - **Daily loss** counts the full max loss of every entry placed today, win or

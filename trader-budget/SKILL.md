@@ -8,7 +8,7 @@ description: >-
   charges, stamp duty and GST; position cap; max order; cash after your
   buffer), says which limit decided it, shows the loss at the stop and the
   gain at the target after charges, and writes ONE paper bracket order
-  (entry, stop-loss, take-profit, NSE, MIS) to trader/orders.json. A stop too
+  (entry, stop-loss, take-profit, NSE or BSE, MIS) to trader/orders.json. A stop too
   far away for your max loss, or a target that does not even pay the
   charges, is a plain refusal. Nothing is placed. Use when the user says
   "how many shares", "size this trade", "how much should I buy", "I have
@@ -64,7 +64,8 @@ If `trader/config.json` does not exist, copy `config.example.json` into
   **min_reward_risk** (1.0), **require_stop** (true), **no_entries_before** / **no_entries_after**
   ("09:30" / "14:30") and **flat_by** ("15:00"), all IST.
 - **charges**: the broker's rates. The defaults are the usual discount-broker intraday rates:
-  brokerage 0.03% capped at Rs 20 an order, STT 0.025% on the sell, NSE transaction 0.00297%,
+  brokerage 0.03% capped at Rs 20 an order, STT 0.025% on the sell, NSE transaction 0.00297%
+  (BSE 0.00375% for a `.BO` symbol),
   SEBI 0.0001%, stamp duty 0.003% on the buy, GST 18% on brokerage + exchange + SEBI.
 - **blocked**: symbols they never want to trade.
 - **paper** stays true: this port has no broker step.

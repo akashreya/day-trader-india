@@ -6,12 +6,13 @@ An India port of Jake Schincariol's
 [day-trader-skill](https://github.com/Jakeschincariol/day-trader-skill) (MIT).
 Same method, rebuilt for the National Stock Exchange: India time (IST, no
 daylight saving), NSE hours (9:15 to 3:30) and the 2026 NSE holiday list,
-NSE symbols (`RELIANCE`, `M&M`, `BAJAJ-AUTO`; `.BO` for BSE), NSE's list of
-equities, rupees, intraday (MIS) charges in every size and risk number, and
+NSE symbols (`RELIANCE`, `M&M`, `BAJAJ-AUTO`) and BSE ones (`RELIANCE.BO`),
+NSE's and BSE's lists of stocks, rupees, intraday (MIS) charges in every size and risk number, and
 the closing auction F&O stocks have had since 3 August 2026.
 
 Free, MIT, no signup, no API key. The tools are plain Python that read free
-public data: Yahoo Finance charts (`SYMBOL.NS`) and NSE's `EQUITY_L.csv`.
+public data: Yahoo Finance charts (`SYMBOL.NS`, `SYMBOL.BO`), NSE's
+`EQUITY_L.csv` and BSE's list of scrips.
 
 **Paper only.** This port has no broker step. Nothing in it can place an
 order. It tells you the moment, the stop, the target, the odds and the size;
@@ -49,7 +50,7 @@ The tools need Python 3.8 or newer. Nothing to pip install.
 
 | command | job | what it does |
 | --- | --- | --- |
-| `/trader-scanner` | Chart Scanner | Scans about 2,000 NSE charts for setups: opening-range breakouts, flags, oversold bounces. |
+| `/trader-scanner` | Chart Scanner | Scans about 2,000 NSE charts (or BSE, or both) for setups: opening-range breakouts, flags, oversold bounces. |
 | `/trader-entry` | Entry Timer | Watches a setup bar by bar and tells you the moment to get in. |
 | `/trader-exit` | Exit Planner | Sets your stop and your target before you enter, and your flat-by time. |
 | `/trader-timemachine` | Time Machine | Replays the rest of the session 10,000 times from the stock's own bars, plus every past time the setup fired. |
@@ -93,6 +94,7 @@ polite about it.
 
 ```bash
 python3 trader-scanner/scan.py universe                                # NSE EQUITY_L.csv -> trader/universe.txt
+python3 trader-scanner/scan.py universe --exchange both                # plus BSE-only stocks, as SYMBOL.BO
 python3 trader-scanner/scan.py daily                                   # before the open: daily setups
 python3 trader-scanner/scan.py orb --at 10:00                          # opening-range breakouts so far
 python3 trader-entry/entry.py check RELIANCE --setup orb               # waiting / triggered / expired
@@ -121,6 +123,17 @@ python3 trader-timemachine/timemachine.py run --symbol RELIANCE --date <today> \
     --entry <price> --stop <stop> --target <target> --entry-time "10:00 AM"
 ```
 
+## BSE
+
+Add `.BO` to any symbol (`RELIANCE.BO`, or the scrip code `500325.BO`) and
+every skill works on BSE: same hours, same holidays, same closing auction for
+F&O stocks. The charges use BSE's transaction fee (0.00375% against NSE's
+0.00297%) and the paper order says `"exchange": "BSE"`. The scanner builds a
+BSE list with `--exchange bse` (groups A, B and X; trade-for-trade and SME
+groups are out) or `--exchange both` (the NSE list plus companies only on
+BSE). Most liquid stocks trade on both, with far more intraday volume on NSE,
+so for the same company NSE is usually the better book.
+
 ## Fine print
 
 **Not financial advice.** This is software that reads public data and does
@@ -136,7 +149,7 @@ a broker's API falls under SEBI's 2025 framework for retail algorithmic
 trading; read your broker's rules first.
 
 **Charges are an estimate.** Brokerage (0.03% up to Rs 20 an order), STT
-0.025% on the sell, NSE 0.00297%, SEBI 0.0001%, stamp duty 0.003% on the
+0.025% on the sell, NSE 0.00297% (BSE 0.00375%), SEBI 0.0001%, stamp duty 0.003% on the
 buy, GST 18%. Set your broker's rates under `"charges"` in
 `trader/config.json`. Your contract note is the truth.
 
@@ -155,8 +168,8 @@ stop price.
 
 **The data is free and unofficial.** Yahoo Finance's chart endpoint is not
 an official API: it can lag, change or rate-limit you, and its NSE bars are
-delayed. NSE's site blocks some scripted downloads; save `EQUITY_L.csv` in a
-browser and pass `--offline` if it does.
+delayed. NSE's and BSE's sites block some scripted downloads; save the list
+in a browser and pass `--offline` if they do.
 
 **Holidays.** The 2026 NSE holiday list is built in. NSE publishes the 2027
 list in December: add it to `NSE_HOLIDAYS` in each tool. Muhurat and other

@@ -17,7 +17,8 @@ SDIR = os.path.join(FIX, "trader-scanner")
 WALL = os.path.join(SDIR, "wall5m-2026-10-19.json.gz")       # 234 real 5-min charts, Oct 19 2026
 DAILY = os.path.join(SDIR, "daily-spark-2026-10-19.json")    # 19 real daily charts as one spark answer
 LIVE = os.path.join(SDIR, "spark-3mo-live-2026-10-20.json")  # a real 20-symbol spark answer
-EQUITY_L = os.path.join(SDIR, "nse", "EQUITY_L.csv")         # a hand-made sample of NSE's EQUITY_L.csv
+EQUITY_L = os.path.join(SDIR, "lists", "EQUITY_L.csv")       # a hand-made sample of NSE's EQUITY_L.csv
+BSE_LIST = os.path.join(SDIR, "lists", "Equity.csv")         # a hand-made sample of BSE's list of scrips
 # real US 5-minute answers, retimed onto NSE hours and moved to Wed Oct 21 (Oct 20 is Dussehra on NSE)
 SPARK5 = os.path.join(SDIR, "spark-5m-live-2026-10-21-1001.json")  # "fetched" 09:46:47 AM IST
 TSLA5 = os.path.join(SDIR, "TSLA-5m-live-2026-10-21-1001.json")    # the v8 chart fetched with it
@@ -78,6 +79,66 @@ class Universe(unittest.TestCase):
             scan.parse_equity_list("<html>maintenance</html>")
         with self.assertRaises(scan.ScanError):
             scan.build_universe({})
+
+
+class BseUniverse(unittest.TestCase):
+    def setUp(self):
+        with open(BSE_LIST, encoding="utf-8") as fh:
+            self.text = fh.read()
+        self.rows = {r["id"]: r for r in scan.parse_bse_list(self.text)}
+
+    def test_the_kept_list(self):
+        kept, counts = scan.build_bse_universe(self.text)
+        self.assertEqual([s for s, _ in kept], ["EXBSEONLY.BO", "EXSMALLX.BO", "RELIANCE.BO", "TCS.BO"])
+        self.assertEqual(counts["rows"], 9)
+        self.assertEqual(dict(kept)["RELIANCE.BO"], "Reliance Industries Ltd")
+
+    def test_one_case_per_rule(self):
+        cases = {"RELIANCE": "keep", "EXBSEONLY": "keep", "EXSMALLX": "keep",
+                 "EXTFT": "group T (not intraday)", "EXZ": "group Z (not intraday)",
+                 "EXSME": "group M (not intraday)", "EXSUSP": "not active", "EXPREF": "not equity"}
+        for sid, want in cases.items():
+            self.assertEqual(scan.classify_bse(self.rows[sid]), want, sid)
+
+    def test_the_json_answer_reads_the_same(self):
+        items = [{"SCRIP_CD": "500325", "scrip_id": "RELIANCE", "Issuer_Name": "Reliance Industries Ltd",
+                  "Status": "Active", "GROUP": "A ", "ISIN_NUMBER": "INE002A01018", "Segment": "Equity"},
+                 {"SCRIP_CD": "999003", "scrip_id": "EXTFT", "Issuer_Name": "Example", "Status": "Active",
+                  "GROUP": "T", "ISIN_NUMBER": "INE000Y01037", "Segment": "Equity"}]
+        for doc in (items, {"Table": items}):
+            kept, _ = scan.build_bse_universe(json.dumps(doc))
+            self.assertEqual(kept, [("RELIANCE.BO", "Reliance Industries Ltd")])
+        with self.assertRaises(scan.ScanError):
+            scan.parse_bse_list("<html>maintenance</html>")
+
+    def test_both_lists_hold_each_company_once(self):
+        isins = {"INE002A01018", "INE467B01029"}            # Reliance and TCS are on NSE too
+        kept, counts = scan.build_bse_universe(self.text, isins)
+        self.assertEqual([s for s, _ in kept], ["EXBSEONLY.BO", "EXSMALLX.BO"])
+        self.assertEqual(counts["also on NSE"], 2)
+
+    def test_cli(self):
+        d = tempfile.mkdtemp()
+        try:
+            out = os.path.join(d, "u.txt")
+            code, text, _ = run(["universe", "--exchange", "bse", "--offline", BSE_LIST, "--out", out])
+            self.assertEqual(code, 0)
+            self.assertIn("Kept 4 BSE stocks in groups A, B and X", text)
+            with open(out, encoding="utf-8") as fh:
+                self.assertIn("RELIANCE.BO|Reliance Industries Ltd", fh.read().splitlines())
+            code, text, _ = run(["universe", "--exchange", "both", "--offline", os.path.dirname(BSE_LIST),
+                                 "--out", out])
+            self.assertEqual(code, 0)
+            self.assertIn("Kept 8 stocks: 6 on NSE plus 2 BSE-only (SYMBOL.BO)", text)
+            with open(out, encoding="utf-8") as fh:
+                syms = [ln.split("|")[0] for ln in fh.read().splitlines()]
+            self.assertIn("EXBSEONLY.BO", syms)
+            self.assertNotIn("RELIANCE.BO", syms)                # once, as the NSE symbol
+            self.assertIn("RELIANCE", syms)
+            self.assertEqual(scan.spark_path(["EXBSEONLY.BO"], "1d", "5m"),
+                             "/v7/finance/spark?symbols=EXBSEONLY.BO&range=1d&interval=5m")
+        finally:
+            shutil.rmtree(d)
 
 
 class Time(unittest.TestCase):

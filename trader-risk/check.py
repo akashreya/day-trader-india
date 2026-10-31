@@ -263,13 +263,13 @@ def _f(x):
         return None
 
 
-# Equity intraday (MIS) charges on NSE, the same rates and math as trader-budget's size.py.
+# Equity intraday (MIS) charges on NSE and BSE (a .BO symbol), the same rates and math as trader-budget's size.py.
 # "charges": false in the config switches them off (the loss is then the move to the stop only).
 CHARGES = {"brokerage_per_order": 20.0, "brokerage_pct": 0.03, "stt_sell_pct": 0.025, "txn_pct": 0.00297,
-           "sebi_pct": 0.0001, "stamp_buy_pct": 0.003, "gst_pct": 18.0}
+           "sebi_pct": 0.0001, "stamp_buy_pct": 0.003, "gst_pct": 18.0, "txn_pct_bse": 0.00375}
 
 
-def intraday_charges(qty, buy, sell, cfg=None):
+def intraday_charges(qty, buy, sell, cfg=None, exchange="NSE"):
     """Rupees of charges for buying qty at buy and selling at sell the same day (0 when switched off)."""
     if (cfg or {}).get("charges", {}) is False:
         return 0.0
@@ -277,12 +277,18 @@ def intraday_charges(qty, buy, sell, cfg=None):
     k.update((cfg or {}).get("charges") or {})
     bv, sv = qty * float(buy), qty * float(sell)
     brk = sum(min(float(k["brokerage_per_order"]), v * float(k["brokerage_pct"]) / 100.0) for v in (bv, sv) if v > 0)
-    txn = (bv + sv) * float(k["txn_pct"]) / 100.0
+    rate = k["txn_pct_bse"] if str(exchange).upper() == "BSE" else k["txn_pct"]
+    txn = (bv + sv) * float(rate) / 100.0
     sebi = (bv + sv) * float(k["sebi_pct"]) / 100.0
     stt = sv * float(k["stt_sell_pct"]) / 100.0
     stamp = bv * float(k["stamp_buy_pct"]) / 100.0
     gst = (brk + txn + sebi) * float(k["gst_pct"]) / 100.0
     return round(brk + txn + sebi + stt + stamp + gst, 2)
+
+
+def exchange_of(sym):
+    """RELIANCE -> NSE, RELIANCE.NS -> NSE, RELIANCE.BO or 500325.BO -> BSE."""
+    return "BSE" if str(sym or "").strip().upper().endswith(".BO") else "NSE"
 
 
 def money(x):
@@ -599,7 +605,7 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
                     risk_ps = risk_c / 100.0
                     shares = q if q is not None else ((value or 0) / ref)
                     move = round(shares * risk_ps, 2)
-                    charges = intraday_charges(shares, ref if long else stop, stop if long else ref, c)
+                    charges = intraday_charges(shares, ref if long else stop, stop if long else ref, c, exchange_of(sym))
                     max_loss = round(move + charges, 2)
                     cap = _f(c.get("max_loss_per_trade_inr"))
                     if cap and max_loss > cap + CENT:

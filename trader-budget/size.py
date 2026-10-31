@@ -290,31 +290,38 @@ def money(x):
 
 # ---------------------------------------------------------------- Indian intraday charges
 
-# Equity intraday (MIS) on NSE, as most discount brokers bill it (checked Oct 2026).
+# Equity intraday (MIS) on NSE and BSE, as most discount brokers bill it (checked Oct 2026).
 # Override any of these under "charges" in trader/config.json; your contract note is the truth.
 CHARGES = {
     "brokerage_per_order": 20.0,   # rupees, cap per executed order
     "brokerage_pct": 0.03,         # % of the order value, whichever is lower
     "stt_sell_pct": 0.025,         # securities transaction tax, sell side only
     "txn_pct": 0.00297,            # NSE transaction charge, both sides
+    "txn_pct_bse": 0.00375,        # BSE transaction charge, both sides (a .BO symbol)
     "sebi_pct": 0.0001,            # SEBI turnover fee (Rs 10 a crore), both sides
     "stamp_buy_pct": 0.003,        # stamp duty, buy side only
     "gst_pct": 18.0,               # on brokerage + transaction + SEBI charges
 }
 
 
-def intraday_charges(qty, buy, sell, cfg=None):
+def intraday_charges(qty, buy, sell, cfg=None, exchange="NSE"):
     """Rupees of charges for buying qty at buy and selling at sell the same day."""
     k = dict(CHARGES)
     k.update((cfg or {}).get("charges") or {})
     bv, sv = qty * float(buy), qty * float(sell)
     brk = sum(min(float(k["brokerage_per_order"]), v * float(k["brokerage_pct"]) / 100.0) for v in (bv, sv) if v > 0)
-    txn = (bv + sv) * float(k["txn_pct"]) / 100.0
+    rate = k["txn_pct_bse"] if str(exchange).upper() == "BSE" else k["txn_pct"]
+    txn = (bv + sv) * float(rate) / 100.0
     sebi = (bv + sv) * float(k["sebi_pct"]) / 100.0
     stt = sv * float(k["stt_sell_pct"]) / 100.0
     stamp = bv * float(k["stamp_buy_pct"]) / 100.0
     gst = (brk + txn + sebi) * float(k["gst_pct"]) / 100.0
     return round(brk + txn + sebi + stt + stamp + gst, 2)
+
+
+def exchange_of(sym):
+    """RELIANCE -> NSE, RELIANCE.NS -> NSE, RELIANCE.BO or 500325.BO -> BSE."""
+    return "BSE" if str(sym or "").strip().upper().endswith(".BO") else "NSE"
 
 
 # ---------------------------------------------------------------- plan mode (the default)
@@ -401,7 +408,7 @@ def size_trade(plan, cfg, budget=None, limit=None, price=None, cash=None, today=
     if max_loss:
         # the max loss is what the trade can cost you: the move to the stop PLUS the charges
         trimmed = qty
-        while trimmed > 0 and trimmed * risk_c / 100.0 + intraday_charges(trimmed, ref, stop, c) > max_loss + 0.005:
+        while trimmed > 0 and trimmed * risk_c / 100.0 + intraday_charges(trimmed, ref, stop, c, exchange_of(sym)) > max_loss + 0.005:
             trimmed -= 1
         if trimmed < qty:
             for l in limits:
@@ -414,8 +421,8 @@ def size_trade(plan, cfg, budget=None, limit=None, price=None, cash=None, today=
         l["binds"] = l["name"] == bound[0]
     cost = round(qty * ref, 2)
     loss = round(qty * risk_c / 100.0, 2)
-    ch_stop = intraday_charges(qty, ref, stop, c) if qty else 0.0
-    ch_target = intraday_charges(qty, ref, target, c) if qty else 0.0
+    ch_stop = intraday_charges(qty, ref, stop, c, exchange_of(sym)) if qty else 0.0
+    ch_target = intraday_charges(qty, ref, target, c, exchange_of(sym)) if qty else 0.0
     net_loss = round(loss + ch_stop, 2)
     net_gain = round(qty * reward_c / 100.0 - ch_target, 2)
     refusal = None
@@ -457,7 +464,7 @@ def bracket_order(s):
     """The one proposed paper order (NSE, MIS; strings) plus why and plan."""
     if s["refusal"] or s["qty"] <= 0:
         return None
-    o = {"symbol": s["symbol"], "exchange": "NSE", "product": "MIS", "side": "buy", "qty": str(int(s["qty"])),
+    o = {"symbol": s["symbol"], "exchange": exchange_of(s["symbol"]), "product": "MIS", "side": "buy", "qty": str(int(s["qty"])),
          "type": s["order_type"], "time_in_force": "day"}
     if s["order_type"] == "limit":
         o["limit_price"] = _price(s["entry"])

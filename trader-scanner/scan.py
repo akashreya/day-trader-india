@@ -8,11 +8,15 @@
     python3 scan.py orb --at 10:15 --or-minutes 15    # cut the clock at 10:15 AM IST
     python3 scan.py orb --offline wall5m.json.gz --now "2026-10-19 10:15" --min-price 0
 
-universe  Downloads NSE's list of listed equities (EQUITY_L.csv) and keeps
+universe  --exchange nse (default): downloads NSE's list of listed equities (EQUITY_L.csv) and keeps
           the EQ series: the rolling segment you can trade intraday. BE / BZ
           (trade-for-trade, delivery only) and SME boards are out. About 2,000
           stocks. NSE blocks some scripted clients: if the download fails, save
           the file from nseindia.com in a browser and pass --offline FILE.
+          --exchange bse: BSE's list of scrips, groups A, B and X (the rolling
+          segment); T, XT, Z (trade-for-trade) and the SME groups are out.
+          Symbols are written as SYMBOL.BO. --exchange both: the NSE list plus
+          the BSE-only companies (matched by ISIN), each company once.
 
 daily     Pre-market scan of daily CLOSES (Yahoo spark: 20 symbols a request,
           3 months of 1-day bars, closes only). Liquidity from the spark meta:
@@ -73,6 +77,9 @@ UA = "Mozilla/5.0 (compatible; day-trader-india/1.0; +https://github.com/akashre
 YAHOO_HOSTS = ("https://query2.finance.yahoo.com", "https://query1.finance.yahoo.com")
 NSE_FILE = "EQUITY_L.csv"
 NSE_URL = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv"
+BSE_FILES = ("Equity.csv", "bse-scrips.json")   # BSE's List of Scrips download, or its JSON API answer
+BSE_URL = ("https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w?Group=&Scripcode=&industry="
+           "&segment=Equity&status=Active")
 SPARK_MAX = 20      # Yahoo's spark answers 400 above 20 symbols
 PAUSE = 0.3         # seconds between requests: be polite to free endpoints
 BACKOFF = 5.0       # seconds to wait before the one retry after a 429
@@ -412,7 +419,7 @@ def parse_equity_list(text):
 
 
 def build_universe(texts):
-    """{filename: text} -> (kept [(SYM, name)], counts, created)."""
+    """{filename: text} -> (kept [(SYM, name)], counts, created). NSE's EQUITY_L.csv."""
     kept, counts = {}, {}
     if NSE_FILE not in texts:
         raise ScanError("missing %s" % NSE_FILE)
@@ -424,6 +431,81 @@ def build_universe(texts):
         if why == "keep":
             kept[r["SYMBOL"].strip().upper()] = " ".join((r.get("NAME OF COMPANY") or "").split())
     return sorted(kept.items()), counts, None
+
+
+# BSE's list of scrips: the CSV from bseindia.com (Markets > List of Scrips, Equity, Active:
+# Security Code, Issuer Name, Security Id, Security Name, Status, Group, Face Value, ISIN No,
+# Industry, Instrument) or the JSON its page reads (SCRIP_CD, scrip_id, Scrip_Name, Status, GROUP,
+# ISIN_NUMBER, ...). Groups A, B and X are the rolling segment, tradable intraday. T, XT, Z, ZP,
+# P and TS are trade-for-trade (delivery only); M, MT and MS are the SME board: all out.
+BSE_KEEP_GROUPS = ("A", "B", "X")
+
+
+def parse_bse_list(text):
+    """BSE scrip list (CSV or JSON) -> rows {id, code, name, group, status, isin, instrument}."""
+    text = (text or "").lstrip("\ufeff").strip()
+    out = []
+    if text.startswith(("[", "{")):
+        try:
+            doc = json.loads(text)
+        except ValueError as e:
+            raise ScanError("BSE's scrip list is not valid JSON: %s" % e)
+        items = (doc.get("Table") or doc.get("data") or []) if isinstance(doc, dict) else doc
+        for d in items:
+            g = {str(k).upper(): v for k, v in d.items()}
+            out.append({"id": str(g.get("SCRIP_ID") or "").strip(), "code": str(g.get("SCRIP_CD") or "").strip(),
+                        "name": str(g.get("ISSUER_NAME") or g.get("SCRIP_NAME") or "").strip(),
+                        "group": str(g.get("GROUP") or "").strip(), "status": str(g.get("STATUS") or "").strip(),
+                        "isin": str(g.get("ISIN_NUMBER") or "").strip(),
+                        "instrument": str(g.get("SEGMENT") or "Equity").strip()})
+        return out
+    import csv, io
+    rdr = csv.reader(io.StringIO(text))
+    try:
+        hdr = [h.strip().upper() for h in next(rdr)]
+    except StopIteration:
+        raise ScanError("BSE's scrip list is empty")
+    if "SECURITY ID" not in hdr or "GROUP" not in hdr:
+        raise ScanError("not BSE's list of scrips (header %s)" % ",".join(hdr)[:60])
+    for r in rdr:
+        if not r or not any(c.strip() for c in r):
+            continue
+        d = dict(zip(hdr, [c.strip() for c in r]))
+        out.append({"id": d.get("SECURITY ID", ""), "code": d.get("SECURITY CODE", ""),
+                    "name": d.get("ISSUER NAME") or d.get("SECURITY NAME", ""), "group": d.get("GROUP", ""),
+                    "status": d.get("STATUS", ""), "isin": d.get("ISIN NO", ""),
+                    "instrument": d.get("INSTRUMENT") or "Equity"})
+    return out
+
+
+def classify_bse(row):
+    """One BSE scrip -> 'keep' or the rule that drops it."""
+    if row["status"] and row["status"].lower() != "active":
+        return "not active"
+    if row["instrument"] and "equity" not in row["instrument"].lower():
+        return "not equity"
+    g = row["group"].upper()
+    if g not in BSE_KEEP_GROUPS:
+        return "group %s (not intraday)" % (g or "blank")
+    if not TICKER.match(row["id"].upper()):
+        return "not a plain symbol"
+    return "keep"
+
+
+def build_bse_universe(text, nse_isins=None):
+    """BSE scrip list -> (kept [(SYM.BO, name)], counts). With nse_isins, a company already on
+    NSE is left out (counted as 'also on NSE'), so a both-exchange list holds each company once."""
+    kept, counts = {}, {}
+    rows = parse_bse_list(text)
+    counts["rows"] = len(rows)
+    for r in rows:
+        why = classify_bse(r)
+        if why == "keep" and nse_isins and r["isin"] and r["isin"] in nse_isins:
+            why = "also on NSE"
+        counts[why] = counts.get(why, 0) + 1
+        if why == "keep":
+            kept[r["id"].upper() + ".BO"] = " ".join(r["name"].split())
+    return sorted(kept.items()), counts
 
 
 # ---------------------------------------------------------------- daily setups
@@ -783,24 +865,75 @@ def money(x):
 
 # ---------------------------------------------------------------- commands
 
+def _offline_file(path, names):
+    if os.path.isfile(path):
+        return path
+    for n in names:
+        p = os.path.join(path, n)
+        if os.path.exists(p):
+            return p
+    raise ScanError("no %s in %s" % (" or ".join(names), path))
+
+
+def _read(path):
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        return fh.read()
+
+
+def fetch_nse_list(offline):
+    if offline:
+        return _read(_offline_file(offline, [NSE_FILE]))
+    try:
+        return http_get(NSE_URL, timeout=60)
+    except urllib.error.HTTPError as e:
+        raise ScanError("nseindia.com answered HTTP %d for %s (NSE blocks some clients: download it "
+                        "in a browser and pass --offline FILE)" % (e.code, NSE_FILE))
+    except (urllib.error.URLError, OSError) as e:
+        raise ScanError("could not reach nseindia.com: %s" % getattr(e, "reason", e))
+
+
+def fetch_bse_list(offline):
+    if offline:
+        return _read(_offline_file(offline, list(BSE_FILES)))
+    try:
+        req = urllib.request.Request(BSE_URL, headers={"User-Agent": UA, "Accept": "application/json",
+                                                       "Referer": "https://www.bseindia.com/"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        raise ScanError("bseindia.com answered HTTP %d (BSE blocks some clients: on bseindia.com open "
+                        "Markets > List of Scrips, pick Equity and Active, download the CSV and pass "
+                        "--offline Equity.csv)" % e.code)
+    except (urllib.error.URLError, OSError) as e:
+        raise ScanError("could not reach bseindia.com: %s" % getattr(e, "reason", e))
+
+
 def cmd_universe(a):
     t0 = time.time()
-    texts = {}
-    if a.offline:
-        p = a.offline if os.path.isfile(a.offline) else os.path.join(a.offline, NSE_FILE)
-        if not os.path.exists(p):
-            raise ScanError("no %s in %s" % (NSE_FILE, a.offline))
-        with open(p, encoding="utf-8", errors="replace") as fh:
-            texts[NSE_FILE] = fh.read()
-    else:
-        try:
-            texts[NSE_FILE] = http_get(NSE_URL, timeout=60)
-        except urllib.error.HTTPError as e:
-            raise ScanError("nseindia.com answered HTTP %d for %s (NSE blocks some clients: download it "
-                            "in a browser and pass --offline FILE)" % (e.code, NSE_FILE))
-        except (urllib.error.URLError, OSError) as e:
-            raise ScanError("could not reach nseindia.com: %s" % getattr(e, "reason", e))
+    exch = (a.exchange or "nse").lower()
+    if exch == "bse":
+        kept, counts = build_bse_universe(fetch_bse_list(a.offline))
+        return _universe_out(a, t0, kept, counts, None, "BSE list of scrips",
+                             "BSE stocks in groups A, B and X (intraday-tradable), as SYMBOL.BO")
+    texts = {NSE_FILE: fetch_nse_list(a.offline)}
+    if exch == "both":
+        nse_kept, nse_counts, _ = build_universe(texts)
+        isins = {r.get("ISIN NUMBER", "") for r in parse_equity_list(texts[NSE_FILE]) if classify(r) == "keep"}
+        bse_kept, bse_counts = build_bse_universe(fetch_bse_list(a.offline), isins)
+        counts = {"rows": nse_counts.get("rows", 0) + bse_counts.get("rows", 0)}
+        for c, tag in ((nse_counts, "NSE"), (bse_counts, "BSE")):
+            for k, v in c.items():
+                if k not in ("rows", "keep"):
+                    counts["%s: %s" % (tag, k)] = counts.get("%s: %s" % (tag, k), 0) + v
+        return _universe_out(a, t0, nse_kept + bse_kept, counts, None, "NSE and BSE lists",
+                             "stocks: %s on NSE plus %s BSE-only (SYMBOL.BO)"
+                             % ("{:,}".format(len(nse_kept)), "{:,}".format(len(bse_kept))))
     kept, counts, created = build_universe(texts)
+    return _universe_out(a, t0, kept, counts, created, "NSE list of equities",
+                         "NSE stocks in the EQ series (intraday-tradable)")
+
+
+def _universe_out(a, t0, kept, counts, created, source, what):
     if not a.no_write:
         d = os.path.dirname(a.out)
         if d:
@@ -814,8 +947,8 @@ def cmd_universe(a):
                           "dropped": dropped, "out": None if a.no_write else a.out,
                           "seconds": round(time.time() - t0, 1)}, indent=2))
     else:
-        print("NSE list of equities: %s rows." % "{:,}".format(counts.get("rows", 0)))
-        print("Kept %s NSE stocks in the EQ series (intraday-tradable)." % "{:,}".format(len(kept)))
+        print("%s: %s rows." % (source, "{:,}".format(counts.get("rows", 0))))
+        print("Kept %s %s." % ("{:,}".format(len(kept)), what))
         print("Dropped: " + ", ".join("%s %s" % ("{:,}".format(v), k)
                                       for k, v in sorted(dropped.items(), key=lambda kv: -kv[1])) + ".")
         if not a.no_write:
@@ -974,9 +1107,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Chart Scanner (trader-scanner): daily setups and opening-range breakouts.")
     sub = ap.add_subparsers(dest="cmd")
 
-    p = sub.add_parser("universe", help="download NSE's EQUITY_L.csv -> trader/universe.txt")
+    p = sub.add_parser("universe", help="download NSE's (or BSE's) list of stocks -> trader/universe.txt")
+    p.add_argument("--exchange", choices=["nse", "bse", "both"], default="nse",
+                   help="nse (default), bse (SYMBOL.BO), or both (NSE plus BSE-only companies)")
     p.add_argument("--out", default=DEFAULT_UNIVERSE)
-    p.add_argument("--offline", metavar="DIR", help="EQUITY_L.csv, or a folder holding it")
+    p.add_argument("--offline", metavar="PATH", help="the downloaded list (EQUITY_L.csv, Equity.csv), or a folder "
+                   "holding it (both: a folder with both)")
     p.add_argument("--no-write", action="store_true")
     p.add_argument("--pause", type=float, default=PAUSE)
     p.add_argument("--json", action="store_true")

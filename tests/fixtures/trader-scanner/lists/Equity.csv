@@ -1,0 +1,10 @@
+Security Code,Issuer Name,Security Id,Security Name,Status,Group,Face Value,ISIN No,Industry,Instrument
+500325,Reliance Industries Ltd,RELIANCE,RELIANCE INDUSTRIES LTD.,Active,A ,10.00,INE002A01018,Refineries & Marketing,Equity
+532540,Tata Consultancy Services Ltd,TCS,TATA CONSULTANCY SERVICES LTD.,Active,A ,1.00,INE467B01029,Computers - Software & Consulting,Equity
+999001,Example Bse Only Ltd,EXBSEONLY,EXAMPLE BSE ONLY LTD.,Active,B ,10.00,INE000Y01011,Example,Equity
+999002,Example Small Ltd,EXSMALLX,EXAMPLE SMALL LTD.,Active,X ,10.00,INE000Y01029,Example,Equity
+999003,Example Trade To Trade Ltd,EXTFT,EXAMPLE TRADE TO TRADE LTD.,Active,T ,10.00,INE000Y01037,Example,Equity
+999004,Example Restricted Ltd,EXZ,EXAMPLE RESTRICTED LTD.,Active,Z ,10.00,INE000Y01045,Example,Equity
+999005,Example Sme Ltd,EXSME,EXAMPLE SME LTD.,Active,M ,10.00,INE000Y01052,Example,Equity
+999006,Example Suspended Ltd,EXSUSP,EXAMPLE SUSPENDED LTD.,Suspended,B ,10.00,INE000Y01060,Example,Equity
+999007,Example Preference Ltd,EXPREF,EXAMPLE PREF SHARES,Active,B ,100.00,INE000Y04015,Example,Preference Shares

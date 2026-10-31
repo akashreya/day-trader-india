@@ -1,7 +1,7 @@
 ---
 name: trader-scanner
 description: >-
-  Chart Scanner for NSE stocks. Scans thousands of charts for setups:
+  Chart Scanner for NSE and BSE stocks. Scans thousands of charts for setups:
   opening-range breakouts, flags, oversold bounces. Builds the list of NSE
   stocks you can trade intraday (the EQ series) from NSE's EQUITY_L.csv,
   runs a pre-market scan of daily closes (20-day closing-high breakout, bull
@@ -27,7 +27,8 @@ the scanner does not change that. It only saves you from flipping through
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scan.py" universe                       # -> trader/universe.txt
+python3 "${CLAUDE_SKILL_DIR}/scan.py" universe                       # NSE -> trader/universe.txt
+python3 "${CLAUDE_SKILL_DIR}/scan.py" universe --exchange both       # NSE plus BSE-only stocks (SYMBOL.BO)
 python3 "${CLAUDE_SKILL_DIR}/scan.py" daily                          # before the open -> trader/watchlist.json
 python3 "${CLAUDE_SKILL_DIR}/scan.py" daily --symbols RELIANCE,TCS,INFY  # or --watchlist FILE, --limit 200
 python3 "${CLAUDE_SKILL_DIR}/scan.py" orb                            # after 9:35 AM IST -> trader/watchlist.json
@@ -63,6 +64,18 @@ NSE way (`RELIANCE`); the tools add `.NS` for Yahoo. A BSE code with `.BO`
 
 NSE's site blocks some scripted clients. If the download fails, open the
 URL in a browser, save the file, and run `scan.py universe --offline EQUITY_L.csv`.
+
+**BSE.** `scan.py universe --exchange bse` reads BSE's list of scrips and keeps
+groups A, B and X, the rolling segment you can trade intraday. T, XT, Z, ZP,
+P and TS are trade-for-trade (delivery only, no intraday), and M, MT and MS
+are the SME board: all out. Symbols are written as `SYMBOL.BO`, and every
+tool reads them from Yahoo's BSE charts. `--exchange both` keeps the NSE list
+and adds the companies listed only on BSE (matched by ISIN), so each company
+appears once. BSE blocks some scripted clients too: on bseindia.com open
+Markets > List of Scrips, pick Equity and Active, download the CSV and pass
+`--offline Equity.csv`. Most liquid stocks trade on both exchanges, with far
+more intraday volume on NSE; BSE-only stocks are mostly thin, and the price
+and volume floors drop many of them.
 
 ## The daily scan (before the open)
 
