@@ -1,0 +1,30 @@
+{
+  "source": "Test fixture: five made-up weights (they sum to 71.86, not yet renormalised).",
+  "weights": [
+    {
+      "ticker": "RELIANCE",
+      "name": "Reliance Industries",
+      "weight": 22.04
+    },
+    {
+      "ticker": "HDFCBANK",
+      "name": "HDFC Bank",
+      "weight": 17.14
+    },
+    {
+      "ticker": "INFY",
+      "name": "Infosys",
+      "weight": 12.62
+    },
+    {
+      "ticker": "ITC",
+      "name": "ITC",
+      "weight": 10.86
+    },
+    {
+      "ticker": "TCS",
+      "name": "Tata Consultancy Services",
+      "weight": 9.2
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "source": "An illustrative five-stock split for the weights mode. The weights are made up for the example; they are not a recommendation.",
+  "as_of": "2026-10-31",
+  "weights": [
+    {
+      "ticker": "RELIANCE",
+      "name": "Reliance Industries",
+      "weight": 30.67
+    },
+    {
+      "ticker": "HDFCBANK",
+      "name": "HDFC Bank",
+      "weight": 23.85
+    },
+    {
+      "ticker": "INFY",
+      "name": "Infosys",
+      "weight": 17.56
+    },
+    {
+      "ticker": "ITC",
+      "name": "ITC",
+      "weight": 15.11
+    },
+    {
+      "ticker": "TCS",
+      "name": "Tata Consultancy Services",
+      "weight": 12.8
+    }
+  ]
+}

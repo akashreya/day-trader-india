@@ -1,0 +1,22 @@
+{
+  "name": "day-trader-india",
+  "description": "6 Claude skills for intraday trading on NSE: scan the market, time every entry and exit, replay every outcome, and size every trade with Indian charges, before you risk a rupee.",
+  "version": "1.0.0",
+  "author": {
+    "name": "akashreya",
+    "url": "https://github.com/akashreya"
+  },
+  "homepage": "https://github.com/akashreya/day-trader-india",
+  "repository": "https://github.com/akashreya/day-trader-india",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "claude-skills",
+    "nse",
+    "india",
+    "intraday",
+    "opening-range-breakout",
+    "paper-trading"
+  ],
+  "skills": "./"
+}
