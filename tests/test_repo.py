@@ -5,10 +5,10 @@ import unittest
 
 from _load import ROOT
 
-# the India port: the six NSE skills
-SKILLS = ["trader-scanner", "trader-entry", "trader-exit", "trader-timemachine", "trader-risk", "trader-budget"]
-ABOUT = ("6 Claude skills for intraday trading on NSE: scan the market, time every entry and exit, replay every "
-         "outcome, and size every trade with Indian charges, before you risk a rupee.")
+# the India port: nine skills
+SKILLS = ["trader-scanner", "trader-news", "trader-entry", "trader-exit", "trader-timemachine", "trader-risk",
+          "trader-budget", "trader-broker", "trader-alerts"]
+ABOUT = ("9 Claude skills for intraday trading on NSE and BSE: scan the market, track the filings, time every entry and exit, replay every outcome, size every trade with Indian charges, and send it to Zerodha Kite only on your yes.")
 # every skill carries the safety block
 ORDER_PATH = SKILLS
 V1_ONLY = ["trader-copycat", "trader-screener", "trader-tax", "trader-rebalance"]
@@ -30,7 +30,7 @@ def every_text_file():
 
 
 class Repo(unittest.TestCase):
-    def test_six_skill_folders_at_the_root(self):
+    def test_nine_skill_folders_at_the_root(self):
         found = sorted(d for d in os.listdir(ROOT)
                        if os.path.isfile(os.path.join(ROOT, d, "SKILL.md")))
         self.assertEqual(found, sorted(SKILLS))

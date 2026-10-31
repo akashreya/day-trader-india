@@ -77,7 +77,7 @@ day bar by bar without waiting.
 ## Steps
 
 1. Get the symbol from the user, or run `entry.py watchlist` after
-   `/trader-scanner`. Check the stock's news and NSE announcements first.
+   `/trader-scanner`. Check `/trader-news` for it first.
 2. Run `entry.py check SYMBOL`. Tell the user the status in one line:
    waiting and how far, triggered at what time and price, or expired.
 3. To wait for it, Claude can run `entry.py watch SYMBOL --until 14:30` in
@@ -131,14 +131,20 @@ and the trigger moves to 10:20 AM at 365.75 (the 10:15 bar, 7.98x).
 
 It never places an order, never sizes a position, never sets the stop (that
 is `/trader-exit`), never moves the level after the fact, and never counts a
-bar that has not closed. There is no broker step in this port at all.
+bar that has not closed. It never runs `/trader-broker` from a background
+watch: nobody is there to say yes.
 
 ## Safety
 
 - Education and tooling, not financial advice. A PASS is a rules check, not a recommendation.
-- Paper only. This India port has no broker step: nothing in it can place, change or cancel an
-  order. Any real order is one the user types into their own broker and says yes to themselves.
-- NSE cash equity, intraday (MIS), longs only. No F&O, no short selling, no leverage beyond what
+- Paper by default (`"paper": true`): nothing goes to a broker. Real orders need `"paper": false` and
+  `"broker": "kite"` in the user's own config, set by the user, and a Kite MCP server the user runs
+  with their own Kite Connect keys (in its config file, never in the chat).
+- Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
+  passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
+  user clicked Allow once on Claude's own card because Kite's order tools are set to "Needs approval"
+  (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
+- NSE and BSE cash equity, intraday (MIS), longs only. No F&O, no short selling, no leverage beyond what
   the user's broker gives MIS on its own terms, and none of that is sized here.
 - Indian intraday costs (brokerage, STT, exchange charges, SEBI fee, stamp duty, GST) are counted in
   the sizing. The contract note is the truth; the config's rates are an estimate.

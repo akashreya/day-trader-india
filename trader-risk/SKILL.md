@@ -12,19 +12,19 @@ description: >-
   tickers, order size, position cap, cash buffer, margin, short sales,
   options and crypto, malformed or bad bracket orders, duplicates and a daily
   order limit. Getting out is never blocked by a day limit. Prints PASS or
-  BLOCK with the reason and records the verdicts with a fingerprint of each
-  exact order. Use when the user says "check my order", "is this
+  BLOCK with the reason and records the verdicts so trader-broker only shows
+  an order that passed. Use when the user says "check my order", "is this
   safe", "risk check", "does this break my rules", "can I take this trade",
-  "how much have I risked today", or after /trader-budget, always.
+  "how much have I risked today", or before /trader-broker, always.
 argument-hint: "[path to orders.json]"
 ---
 
 # trader-risk
 
-The Risk Manager is the gate between a proposal and the user. Every order
-written by trader-budget passes through it. A BLOCK is final for that order:
-it is not shown to the user as a trade to take. This port is paper only, so
-a PASS goes nowhere on its own either. Most people who day trade lose money. These limits
+The Risk Manager is the gate between a proposal and the broker. Every order
+written by trader-budget or trader-broker's flatten passes through it. A
+BLOCK is final for that order: it does not go to the user for a yes, and it
+does not go to the broker. Most people who day trade lose money. These limits
 keep each loss and each day's losses small. They do not make a trade win.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
@@ -40,11 +40,11 @@ python3 "${CLAUDE_SKILL_DIR}/check.py" --now "2026-10-19 10:00"  # pin the clock
 
 | file | what |
 | --- | --- |
-| `trader/orders.json` | the proposed orders (trader-budget) |
+| `trader/orders.json` | the proposed orders (trader-budget, or trader-broker's flatten) |
 | `trader/config.json` | the limits (trader-budget ships `config.example.json`) |
 | `trader/portfolio.json` | cash and holdings; if missing, a fresh account funded with the budget |
 | `trader/prices.json` | `{"prices": {"SYMBOL": price}}`: a fresh price raises the entry it measures risk from |
-| `trader/state/broker.json` | optional log of what you placed today (your paper trades): duplicates, trades per day, daily loss |
+| `trader/state/broker.json` | what trader-broker recorded today (paper or Kite): duplicates, trades per day, daily loss |
 | `trader/state/risk.json` | the verdicts it writes, with a fingerprint of each exact order |
 
 ## Entries and exits
@@ -90,7 +90,7 @@ How the numbers work:
   the same rates as trader-budget (`"charges"` in the config; `false` turns
   them off). Your contract note is the truth.
 - **Daily loss** counts the full max loss of every entry placed today, win or
-  lose, as logged in `trader/state/broker.json`. Three full-size trades use
+  lose, as trader-broker logged it. Three full-size trades use
   up a Rs 1,500 day.
 - **The window** is India time (IST, UTC+5:30, no daylight saving), worked
   out in the tool, never from the computer's clock zone. Weekends and NSE
@@ -113,9 +113,9 @@ not at the broker, a price too old to use.
    BLOCK, give the reason and the fix (fewer shares, a closer stop from
    trader-exit, wait for the window, or skip the trade). Never change a
    limit yourself.
-4. If the order changes in any way, run the check again. Each verdict is
-   recorded with a fingerprint of the exact order, so an edited order has not
-   passed until it passes again, and a verdict from yesterday does not count today.
+4. If the order changes in any way, run the check again. trader-broker matches
+   each order to its verdict by fingerprint, so an edited order is not ready
+   until it passes again, and a verdict from yesterday does not count today.
 
 ## Example: the test fixture
 
@@ -164,9 +164,14 @@ treats a PASS as the user's yes.
 ## Safety
 
 - Education and tooling, not financial advice. A PASS is a rules check, not a recommendation.
-- Paper only. This India port has no broker step: nothing in it can place, change or cancel an
-  order. Any real order is one the user types into their own broker and says yes to themselves.
-- NSE cash equity, intraday (MIS), longs only. No F&O, no short selling, no leverage beyond what
+- Paper by default (`"paper": true`): nothing goes to a broker. Real orders need `"paper": false` and
+  `"broker": "kite"` in the user's own config, set by the user, and a Kite MCP server the user runs
+  with their own Kite Connect keys (in its config file, never in the chat).
+- Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
+  passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
+  user clicked Allow once on Claude's own card because Kite's order tools are set to "Needs approval"
+  (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
+- NSE and BSE cash equity, intraday (MIS), longs only. No F&O, no short selling, no leverage beyond what
   the user's broker gives MIS on its own terms, and none of that is sized here.
 - Indian intraday costs (brokerage, STT, exchange charges, SEBI fee, stamp duty, GST) are counted in
   the sizing. The contract note is the truth; the config's rates are an estimate.

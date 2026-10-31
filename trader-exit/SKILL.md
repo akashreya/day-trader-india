@@ -125,9 +125,14 @@ make a plan pass, and never calls a stop a guarantee.
 ## Safety
 
 - Education and tooling, not financial advice. A PASS is a rules check, not a recommendation.
-- Paper only. This India port has no broker step: nothing in it can place, change or cancel an
-  order. Any real order is one the user types into their own broker and says yes to themselves.
-- NSE cash equity, intraday (MIS), longs only. No F&O, no short selling, no leverage beyond what
+- Paper by default (`"paper": true`): nothing goes to a broker. Real orders need `"paper": false` and
+  `"broker": "kite"` in the user's own config, set by the user, and a Kite MCP server the user runs
+  with their own Kite Connect keys (in its config file, never in the chat).
+- Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
+  passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
+  user clicked Allow once on Claude's own card because Kite's order tools are set to "Needs approval"
+  (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
+- NSE and BSE cash equity, intraday (MIS), longs only. No F&O, no short selling, no leverage beyond what
   the user's broker gives MIS on its own terms, and none of that is sized here.
 - Indian intraday costs (brokerage, STT, exchange charges, SEBI fee, stamp duty, GST) are counted in
   the sizing. The contract note is the truth; the config's rates are an estimate.

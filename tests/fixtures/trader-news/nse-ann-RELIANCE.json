@@ -1,0 +1,37 @@
+[
+ {
+  "symbol": "RELIANCE",
+  "desc": "Outcome of Board Meeting",
+  "dt": "19102026183012",
+  "attchmntFile": "https://nsearchives.nseindia.com/corporate/SAMPLE_RELIANCE_19102026.pdf",
+  "sm_name": "Reliance Industries Limited",
+  "sm_isin": "INE002A01018",
+  "an_dt": "19-Oct-2026 18:30:12",
+  "sort_date": "2026-10-19 18:30:12",
+  "seq_id": "900000001",
+  "attchmntText": "Test fixture, not a real filing: the board approved the quarterly financial results."
+ },
+ {
+  "symbol": "RELIANCE",
+  "desc": "Updates",
+  "dt": "19102026091045",
+  "attchmntFile": "https://nsearchives.nseindia.com/corporate/SAMPLE_RELIANCE_UPDATE.pdf",
+  "sm_name": "Reliance Industries Limited",
+  "sm_isin": "INE002A01018",
+  "an_dt": "19-Oct-2026 09:10:45",
+  "sort_date": "2026-10-19 09:10:45",
+  "seq_id": "900000002",
+  "attchmntText": "Test fixture, not a real filing: a routine update."
+ },
+ {
+  "symbol": "RELIANCE",
+  "desc": "Disclosure of creation of pledge",
+  "dt": "10102026120000",
+  "attchmntFile": "",
+  "sm_name": "Reliance Industries Limited",
+  "an_dt": "10-Oct-2026 12:00:00",
+  "sort_date": "2026-10-10 12:00:00",
+  "seq_id": "900000003",
+  "attchmntText": "Test fixture, older than the window."
+ }
+]

@@ -1,0 +1,14 @@
+{
+ "Table": [
+  {
+   "NEWSID": "aaaa-bbbb-0001",
+   "SCRIP_CD": 500325,
+   "NEWSSUB": "Reliance Industries Ltd - 500325 - Announcement under Regulation 30 (LODR)-Award of Order",
+   "HEADLINE": "Test fixture, not a real filing: the company received an order.",
+   "CATEGORYNAME": "Company Update",
+   "NEWS_DT": "2026-10-19T11:05:00.123",
+   "ATTACHMENTNAME": "sample-0001.pdf",
+   "SLONGNAME": "Reliance Industries Ltd"
+  }
+ ]
+}

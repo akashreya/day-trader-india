@@ -5,7 +5,8 @@ Default mode: sizes ONE day trade from trader/plan.json (written by
 trader-exit) to your budget and your max loss per trade, then writes one
 bracket order (entry, stop-loss, take-profit) to trader/orders.json for NSE
 intraday (MIS). It never places anything: trader-risk checks the order. This
-India port is paper only: there is no broker step.
+India port is paper by default; trader-broker sends it to Kite only on a
+live config and your yes.
 
     python3 size.py                                  # trader/plan.json + trader/config.json
     python3 size.py --write                          # write trader/orders.json
@@ -523,7 +524,7 @@ def plan_report(s, order, notes=()):
                     "%.2f" % s["net_reward_risk"] if s["net_reward_risk"] is not None else "-"))
     lines.append("A stop is an order, not a promise: in a fast market it can fill below %s." % _price(s["stop"]))
     lines.append("")
-    lines.append("Proposed bracket order (NSE, intraday MIS; paper only, nothing has been placed):")
+    lines.append("Proposed order (intraday MIS; nothing has been placed):")
     how = "limit %s" % order["limit_price"] if order["type"] == "limit" else "market"
     lines.append("  buy %s %s, %s, day, take-profit %s, stop-loss %s"
                  % (order["qty"], order["symbol"], how, order["take_profit_limit_price"],
@@ -532,7 +533,7 @@ def plan_report(s, order, notes=()):
         lines.append("Flat by %s IST: close anything still open yourself, before your broker's MIS "
                      "auto square-off (and its fee)." % s["flat_by"])
     lines.append("")
-    lines.append("Next: trader-risk checks it. Paper only: track it by hand or in your broker's paper mode.")
+    lines.append("Next: trader-risk checks it, then trader-broker asks you yes or no.")
     lines.append("Education and tooling, not financial advice.")
     return "\n".join(lines)
 
@@ -734,7 +735,7 @@ def size(rows, cfg, budget=None, prices=None, whole=None, cents=False, top=None)
 
 
 def orders_from(result, source=""):
-    """Weights mode: proposed buy orders, one per position, in place_stock_order shape."""
+    """Weights mode: proposed buy orders, one per position, in the orders-file shape."""
     out = []
     for p in result["positions"]:
         if p["dollars"] <= 0:
@@ -787,14 +788,14 @@ def report(result, orders, source=""):
     for d in r["dropped"]:
         lines.append("Dropped %s: %s" % (d["ticker"], d["reason"]))
     lines.append("")
-    lines.append("Proposed orders (place_stock_order arguments, nothing has been placed):")
+    lines.append("Proposed orders (nothing has been placed):")
     for o in orders:
         amount = ("notional \"%s\"" % o["notional"]) if "notional" in o else ("qty \"%s\"" % o["qty"])
         lines.append("  %s %s %s, %s, %s" % (o["side"], o["symbol"], amount, o["type"], o["time_in_force"]))
     lines.append("")
     lines.append("These buys have no stop. trader-risk blocks them while \"require_stop\" is true and applies "
                  "your day-trade limits to every buy.")
-    lines.append("Next: trader-risk checks every order. Paper only: nothing is sent to a broker.")
+    lines.append("Next: trader-risk checks every order, then trader-broker asks you yes or no for each one.")
     lines.append("Education and tooling, not financial advice.")
     return "\n".join(lines)
 
@@ -811,7 +812,7 @@ def write_orders(path, orders, cfg, source="", now_utc=None):
         "status": "proposed",
         "paper": bool(cfg.get("paper", True)),
         "note": ("Proposals only. Nothing is placed until trader-risk passes each order "
-                 "(paper only: this India port has no broker step)."),
+                 "and you say yes to it in the chat."),
         "source": source,
         "orders": orders,
     }

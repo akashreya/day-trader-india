@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "kite": {
+      "command": "C:\\Users\\YOU\\kite-mcp-server\\kite-mcp-server.exe",
+      "args": [],
+      "env": {
+        "APP_MODE": "stdio",
+        "KITE_API_KEY": "YOUR_KITE_CONNECT_API_KEY_TYPED_HERE_NEVER_IN_CHAT",
+        "KITE_API_SECRET": "YOUR_KITE_CONNECT_API_SECRET_TYPED_HERE_NEVER_IN_CHAT"
+      }
+    }
+  }
+}

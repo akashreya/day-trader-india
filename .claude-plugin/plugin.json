@@ -1,7 +1,7 @@
 {
   "name": "day-trader-india",
-  "description": "6 Claude skills for intraday trading on NSE: scan the market, time every entry and exit, replay every outcome, and size every trade with Indian charges, before you risk a rupee.",
-  "version": "1.0.0",
+  "description": "9 Claude skills for intraday trading on NSE and BSE: scan the market, track the filings, time every entry and exit, replay every outcome, size every trade with Indian charges, and send it to Zerodha Kite only on your yes.",
+  "version": "1.1.0",
   "author": {
     "name": "akashreya",
     "url": "https://github.com/akashreya"
@@ -16,7 +16,10 @@
     "india",
     "intraday",
     "opening-range-breakout",
-    "paper-trading"
+    "paper-trading",
+    "bse",
+    "zerodha",
+    "kite"
   ],
   "skills": "./"
 }
