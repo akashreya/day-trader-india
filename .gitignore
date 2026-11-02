@@ -1,3 +1,10 @@
 __pycache__/
 *.pyc
 trader/
+
+# never commit keys: the real Kite config and env files stay local
+.env
+.env.*
+claude_desktop_config.json
+*.pem
+*.key
