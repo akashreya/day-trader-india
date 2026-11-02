@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
 """Chart Scanner for trader-scanner: scan thousands of charts for setups. Standard library only.
 
-    python3 scan.py universe                          # NSE EQUITY_L.csv -> trader/universe.txt
+    python3 scan.py universe                          # Zerodha's NSE list -> trader/universe.txt
     python3 scan.py daily                             # before the open: daily setups -> trader/watchlist.json
     python3 scan.py daily --symbols RELIANCE,TCS,INFY     # or --watchlist FILE, or --limit 200
     python3 scan.py orb                               # after 9:50 AM IST: opening-range breakouts so far
     python3 scan.py orb --at 10:15 --or-minutes 15    # cut the clock at 10:15 AM IST
     python3 scan.py orb --offline wall5m.json.gz --now "2026-10-19 10:15" --min-price 0
 
-universe  --exchange nse (default): downloads NSE's list of listed equities (EQUITY_L.csv) and keeps
+universe  --source kite (the default): Zerodha's public instrument list,
+          api.kite.trade/instruments/NSE (and /BSE), refreshed every morning, no
+          login, made for scripts. NSE: the EQ series only (a symbol with a
+          two-letter series suffix like -BE, -SM, -SG is out), ETFs and iNAVs
+          out. BSE: equities, ETFs out; this list has no BSE groups, so a
+          trade-for-trade (T, XT, Z) stock can slip in: your broker refuses an
+          intraday order on one. --exchange both matches by symbol and name.
+          --source exchange uses the exchanges' own lists below instead.
+          --exchange nse (default): downloads NSE's list of listed equities (EQUITY_L.csv) and keeps
           the EQ series: the rolling segment you can trade intraday. BE / BZ
           (trade-for-trade, delivery only) and SME boards are out. About 2,000
           stocks. NSE blocks some scripted clients: if the download fails, save
@@ -52,7 +60,8 @@ Yahoo's endpoints are free, unofficial and can lag. query2 first, query1 on
 a 429 or 5xx, one retry after a pause on a 429. A polite pause between
 requests (--pause). Partial results are reported as partial.
 
---offline PATH reads files instead of the network: universe wants EQUITY_L.csv
+--offline PATH reads files instead of the network: universe wants kite-NSE.csv /
+kite-BSE.csv (Zerodha's list) or EQUITY_L.csv / Equity.csv (the exchanges' lists)
 (or a folder holding it); daily and orb take a folder of
 <T>.json v8 chart files or spark responses, or one file that is a spark
 response, a v8 chart, or a bundle {"TSLA": <v8 json>, ...}. .json.gz is fine.
@@ -80,6 +89,8 @@ NSE_URL = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv"
 BSE_FILES = ("Equity.csv", "bse-scrips.json")   # BSE's List of Scrips download, or its JSON API answer
 BSE_URL = ("https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w?Group=&Scripcode=&industry="
            "&segment=Equity&status=Active")
+KITE_URL = "https://api.kite.trade/instruments/%s"   # Zerodha's public list: NSE or BSE, no login
+KITE_FILES = {"NSE": "kite-NSE.csv", "BSE": "kite-BSE.csv"}
 SPARK_MAX = 20      # Yahoo's spark answers 400 above 20 symbols
 PAUSE = 0.3         # seconds between requests: be polite to free endpoints
 BACKOFF = 5.0       # seconds to wait before the one retry after a 429
@@ -508,6 +519,118 @@ def build_bse_universe(text, nse_isins=None):
     return sorted(kept.items()), counts
 
 
+# Zerodha's public instrument list (api.kite.trade/instruments/NSE or /BSE), one CSV per exchange:
+# instrument_token, exchange_token, tradingsymbol, name, last_price, expiry, strike, tick_size,
+# lot_size, instrument_type, segment, exchange. On NSE a non-EQ series carries a two-letter suffix
+# (RELIANCE is EQ; XYZ-BE trade-for-trade, XYZ-SM / -ST SME, XYZ-SG gold bonds, -N0.. bonds), while
+# BAJAJ-AUTO is a plain EQ symbol. For BSE, exchange_token is the scrip code (500325).
+KITE_SERIES = re.compile(r"^(.+)-([A-Z0-9]{2})$")
+KITE_FUNDS = re.compile(r"\bETF|MUTUAL FUND|\bI?NAV\b|BEES\b|INAV$|ETF$", re.I)
+KITE_AMC = re.compile(r"^[A-Z0-9_]*(AMC|BFAM) - ")     # "MIRAEAMC - DEFENCE": a fund house's ETF
+
+
+def _series_label(s):
+    if s in ("BE", "BZ"):
+        return "series BE / BZ (trade-for-trade)"
+    if s in ("SM", "ST"):
+        return "SME board"
+    return "bonds, gold bonds and other series"
+
+
+def parse_kite(text):
+    """Zerodha instrument CSV -> rows (dicts)."""
+    import csv, io
+    text = (text or "").lstrip("\ufeff")
+    rdr = csv.DictReader(io.StringIO(text))
+    if not rdr.fieldnames or "tradingsymbol" not in rdr.fieldnames or "segment" not in rdr.fieldnames:
+        raise ScanError("not Zerodha's instrument list (header %s)" % ",".join(rdr.fieldnames or [])[:60])
+    return [{k: (v or "").strip() for k, v in r.items() if k} for r in rdr]
+
+
+def classify_kite(row, exch):
+    """One Zerodha instrument row -> 'keep' or the rule that drops it."""
+    if row.get("segment") == "INDICES":
+        return "index"
+    if row.get("segment") != exch or row.get("instrument_type") != "EQ":
+        return "not cash equity"
+    sym, name = row.get("tradingsymbol", "").upper(), row.get("name", "")
+    m = KITE_SERIES.match(sym)
+    if m:
+        return _series_label(m.group(2)) if exch == "NSE" else "not a plain symbol"
+    if KITE_FUNDS.search(name) or KITE_FUNDS.search(sym) or KITE_AMC.match(name.upper()):
+        return "ETF or iNAV"
+    if not TICKER.match(sym):
+        return "not a plain symbol"
+    return "keep"
+
+
+def _norm_name(name):
+    n = re.sub(r"[^A-Z0-9 ]", " ", (name or "").upper())
+    n = re.sub(r"\b(LIMITED|LTD|THE|INDIA)\b", " ", n)
+    return " ".join(n.split())
+
+
+def build_kite_universe(texts, exchange="nse"):
+    """{'NSE': csv, 'BSE': csv} -> (kept [(SYM or SYM.BO, name)], counts). 'both' leaves out a
+    BSE stock whose symbol or name is already in the NSE list (counted 'also on NSE')."""
+    kept, counts = [], {"rows": 0}
+    nse_syms, nse_names = set(), set()
+    for exch in ("NSE", "BSE"):
+        if exchange != "both" and exch.lower() != exchange:
+            continue
+        if exch not in texts:
+            raise ScanError("missing %s" % KITE_FILES[exch])
+        rows = parse_kite(texts[exch])
+        counts["rows"] += len(rows)
+        seen = {}
+        for r in rows:
+            why = classify_kite(r, exch)
+            sym, name = r["tradingsymbol"].upper(), " ".join(r.get("name", "").split())
+            if why == "keep" and exch == "BSE" and (sym in nse_syms or _norm_name(name) in nse_names):
+                why = "also on NSE"
+            key = why if exchange != "both" else "%s: %s" % (exch, why)
+            if why != "keep":
+                counts[key] = counts.get(key, 0) + 1
+                continue
+            if exch == "NSE":
+                nse_syms.add(sym)
+                nse_names.add(_norm_name(name))
+                seen[sym] = name
+            else:
+                seen[sym + ".BO"] = name
+        kept += sorted(seen.items())
+        counts["keep"] = len(kept)
+    return kept, counts
+
+
+def fetch_kite_lists(offline, exchange):
+    want = ["NSE", "BSE"] if exchange == "both" else [exchange.upper()]
+    texts = {}
+    for exch in want:
+        if offline:
+            if os.path.isfile(offline):
+                if len(want) > 1:
+                    raise ScanError("--exchange both wants a folder holding %s" % " and ".join(KITE_FILES.values()))
+                texts[exch] = _read(offline)
+            else:
+                texts[exch] = _read(_offline_file(offline, [KITE_FILES[exch]]))
+            continue
+        try:
+            texts[exch] = http_get(KITE_URL % exch, timeout=60)
+        except urllib.error.HTTPError as e:
+            raise ScanError("api.kite.trade answered HTTP %d for the %s list (try --source exchange)" % (e.code, exch))
+        except (urllib.error.URLError, OSError) as e:
+            raise ScanError("could not reach api.kite.trade: %s (try --source exchange)" % getattr(e, "reason", e))
+    return texts
+
+
+def _is_kite_offline(path):
+    if os.path.isdir(path):
+        return any(os.path.exists(os.path.join(path, f)) for f in KITE_FILES.values())
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        return "instrument_token" in fh.readline()
+
+
 # ---------------------------------------------------------------- daily setups
 
 def rsi(closes, n=14):
@@ -911,6 +1034,17 @@ def fetch_bse_list(offline):
 def cmd_universe(a):
     t0 = time.time()
     exch = (a.exchange or "nse").lower()
+    source = a.source
+    if source == "auto":
+        source = "kite" if not a.offline or _is_kite_offline(a.offline) else "exchange"
+    if source == "kite":
+        kept, counts = build_kite_universe(fetch_kite_lists(a.offline, exch), exch)
+        what = {"nse": "NSE stocks in the EQ series (intraday-tradable)",
+                "bse": "BSE equities, as SYMBOL.BO",
+                "both": "stocks: %s on NSE plus %s BSE-only (SYMBOL.BO)"
+                        % ("{:,}".format(sum(1 for s, _ in kept if not s.endswith(".BO"))),
+                           "{:,}".format(sum(1 for s, _ in kept if s.endswith(".BO"))))}[exch]
+        return _universe_out(a, t0, kept, counts, None, "Zerodha's instrument list (%s)" % exch.upper(), what)
     if exch == "bse":
         kept, counts = build_bse_universe(fetch_bse_list(a.offline))
         return _universe_out(a, t0, kept, counts, None, "BSE list of scrips",
@@ -1110,6 +1244,9 @@ def main(argv=None):
     p = sub.add_parser("universe", help="download NSE's (or BSE's) list of stocks -> trader/universe.txt")
     p.add_argument("--exchange", choices=["nse", "bse", "both"], default="nse",
                    help="nse (default), bse (SYMBOL.BO), or both (NSE plus BSE-only companies)")
+    p.add_argument("--source", choices=["auto", "kite", "exchange"], default="auto",
+                   help="kite: Zerodha's public instrument list (default online); exchange: NSE's EQUITY_L.csv "
+                        "and BSE's list of scrips (both block some scripts)")
     p.add_argument("--out", default=DEFAULT_UNIVERSE)
     p.add_argument("--offline", metavar="PATH", help="the downloaded list (EQUITY_L.csv, Equity.csv), or a folder "
                    "holding it (both: a folder with both)")

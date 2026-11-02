@@ -109,7 +109,7 @@ All standard-library Python. The data tools read public endpoints and are
 polite about it.
 
 ```bash
-python3 trader-scanner/scan.py universe                                # NSE EQUITY_L.csv -> trader/universe.txt
+python3 trader-scanner/scan.py universe                                # Zerodha's NSE list -> trader/universe.txt
 python3 trader-scanner/scan.py universe --exchange both                # plus BSE-only stocks, as SYMBOL.BO
 python3 trader-scanner/scan.py daily                                   # before the open: daily setups
 python3 trader-scanner/scan.py orb --at 10:00                          # opening-range breakouts so far

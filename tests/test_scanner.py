@@ -19,6 +19,7 @@ DAILY = os.path.join(SDIR, "daily-spark-2026-10-19.json")    # 19 real daily cha
 LIVE = os.path.join(SDIR, "spark-3mo-live-2026-10-20.json")  # a real 20-symbol spark answer
 EQUITY_L = os.path.join(SDIR, "lists", "EQUITY_L.csv")       # a hand-made sample of NSE's EQUITY_L.csv
 BSE_LIST = os.path.join(SDIR, "lists", "Equity.csv")         # a hand-made sample of BSE's list of scrips
+KITE = os.path.join(SDIR, "lists", "kite")       # real rows of Zerodha's instrument lists (2 Nov 2026)
 # real US 5-minute answers, retimed onto NSE hours and moved to Wed Oct 21 (Oct 20 is Dussehra on NSE)
 SPARK5 = os.path.join(SDIR, "spark-5m-live-2026-10-21-1001.json")  # "fetched" 09:46:47 AM IST
 TSLA5 = os.path.join(SDIR, "TSLA-5m-live-2026-10-21-1001.json")    # the v8 chart fetched with it
@@ -672,6 +673,84 @@ class Cli(unittest.TestCase):
         out = json.loads(text)
         self.assertEqual(len(out["hits"]), 15)
         self.assertEqual(out["note"], "A scan is a list of charts that match a rule, not a list of stocks to buy.")
+
+
+
+class KiteUniverse(unittest.TestCase):
+    def texts(self):
+        out = {}
+        for x in ("NSE", "BSE"):
+            with open(os.path.join(KITE, "kite-%s.csv" % x), encoding="utf-8") as fh:
+                out[x] = fh.read()
+        return out
+
+    def test_nse_keeps_the_eq_series_only(self):
+        kept, counts = scan.build_kite_universe(self.texts(), "nse")
+        self.assertEqual([s for s, _ in kept], ["21STCENMGM", "BAJAJ-AUTO", "INFY", "M&M", "RELIANCE", "TCS"])
+        self.assertEqual(counts["rows"], 14)
+        self.assertEqual(counts["index"], 1)
+        self.assertEqual(counts["ETF or iNAV"], 2)                 # NIFTYBEES, GOLDBEINAV
+        self.assertEqual(counts["series BE / BZ (trade-for-trade)"], 1)
+        self.assertEqual(counts["SME board"], 2)                  # -SM, -ST
+        self.assertEqual(counts["bonds, gold bonds and other series"], 2)   # -SG, -N0
+        self.assertEqual(scan.classify_kite({"segment": "NSE", "instrument_type": "EQ",
+                                             "tradingsymbol": "DEFENCE", "name": "MIRAEAMC - DEFENCE"}, "NSE"),
+                         "ETF or iNAV")
+        self.assertEqual(scan.classify_kite({"segment": "NSE", "instrument_type": "EQ",
+                                             "tradingsymbol": "ETERNAL", "name": "ETERNAL - ZOMATO"}, "NSE"),
+                         "keep")
+
+    def test_bse_and_both(self):
+        kept, counts = scan.build_kite_universe(self.texts(), "bse")
+        self.assertIn(("RELIANCE.BO", "RELIANCE INDUSTRIES"), kept)
+        self.assertEqual(len(kept), 6)
+        self.assertEqual(counts["ETF or iNAV"], 1)
+        kept, counts = scan.build_kite_universe(self.texts(), "both")
+        syms = [s for s, _ in kept]
+        self.assertEqual(len(syms), 10)                               # 6 NSE + 4 BSE-only
+        self.assertNotIn("RELIANCE.BO", syms)
+        self.assertNotIn("TCS.BO", syms)                              # TCS: same symbol, other name
+        self.assertIn("AMBALALSA.BO", syms)
+        self.assertEqual(counts["BSE: also on NSE"], 2)
+
+    def test_not_a_kite_list(self):
+        with self.assertRaises(scan.ScanError):
+            scan.parse_kite("SYMBOL,NAME OF COMPANY,SERIES\nRELIANCE,Reliance,EQ\n")
+
+    def test_cli_offline_folder_is_detected(self):
+        code, text, _ = run(["universe", "--offline", KITE, "--no-write"])
+        self.assertEqual(code, 0)
+        self.assertIn("Zerodha's instrument list (NSE)", text)
+        self.assertIn("Kept 6 NSE stocks in the EQ series", text)
+        code, text, _ = run(["universe", "--exchange", "both", "--offline", KITE, "--no-write"])
+        self.assertIn("Kept 10 stocks: 6 on NSE plus 4 BSE-only (SYMBOL.BO)", text)
+
+    def test_online_uses_zerodha(self):
+        seen = []
+
+        def fake(url, timeout=20):
+            seen.append(url)
+            with open(os.path.join(KITE, "kite-NSE.csv"), encoding="utf-8") as fh:
+                return fh.read()
+        old, scan.http_get = scan.http_get, fake
+        try:
+            code, text, _ = run(["universe", "--no-write"])
+        finally:
+            scan.http_get = old
+        self.assertEqual(code, 0)
+        self.assertEqual(seen, ["https://api.kite.trade/instruments/NSE"])
+
+    def test_zerodha_down_says_what_to_try(self):
+        def down(url, timeout=20):
+            raise urllib.error.URLError("timed out")
+        old, scan.http_get = scan.http_get, down
+        try:
+            code, _, err = run(["universe", "--no-write"])
+        finally:
+            scan.http_get = old
+        self.assertEqual(code, 1)
+        self.assertIn("could not reach api.kite.trade", err)
+        self.assertIn("--source exchange", err)
 
 
 if __name__ == "__main__":

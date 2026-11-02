@@ -3,7 +3,8 @@ name: trader-scanner
 description: >-
   Chart Scanner for NSE and BSE stocks. Scans thousands of charts for setups:
   opening-range breakouts, flags, oversold bounces. Builds the list of NSE
-  stocks you can trade intraday (the EQ series) from NSE's EQUITY_L.csv,
+  stocks you can trade intraday (the EQ series) from Zerodha's public
+  instrument list (or NSE's EQUITY_L.csv),
   runs a pre-market scan of daily closes (20-day closing-high breakout, bull
   flag, reclaimed the 20-day average, oversold, oversold bounce) and an
   intraday opening-range breakout scan on 5-minute bars, then writes
@@ -53,7 +54,23 @@ reason is one plain line).
 
 ## The universe
 
-`universe` downloads NSE's list of listed equities,
+`universe` downloads Zerodha's public instrument list,
+`api.kite.trade/instruments/NSE` (and `/BSE` for `--exchange bse` or `both`):
+refreshed every morning, no login, meant for scripts, and it works where the
+exchanges' own sites block scripts (both did in the live test on 2 Nov 2026).
+It keeps the EQ series: a symbol with a two-letter series suffix (`-BE`,
+`-BZ` trade-for-trade, `-SM` / `-ST` SME, `-SG` gold bonds, `-N0`.. bonds) is
+out, and so are ETFs and iNAVs. About 2,350 NSE stocks. Zerodha's list has no
+BSE groups, so with `--exchange bse` or `both` a trade-for-trade BSE stock
+(groups T, XT, Z) can slip in: your broker refuses an intraday order on one,
+and the volume floor drops most of them. `both` adds BSE stocks whose symbol
+and name are not already on NSE (about 10,000, mostly thin).
+
+`--source exchange` uses the exchanges' own lists instead (below), with BSE's
+groups and ISIN matching. `--offline` reads either kind of file: `kite-NSE.csv`
+/ `kite-BSE.csv`, or `EQUITY_L.csv` / `Equity.csv`.
+
+**NSE's own list.** `universe --source exchange` downloads NSE's list of listed equities,
 `nsearchives.nseindia.com/content/equities/EQUITY_L.csv`, and keeps a row when
 its series is `EQ`: the rolling segment, the one you can trade intraday. Out:
 `BE` and `BZ` (trade-for-trade, delivery only, no intraday), SME boards, and
