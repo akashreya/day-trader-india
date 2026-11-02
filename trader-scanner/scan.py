@@ -773,11 +773,16 @@ def usable(bars, day, cutoff, n_range):
 def orb_candidate(bars, n_range, since=None):
     """Stage 1, closes only: some completed bar after the range closed at or above
     the highest close of the range. Necessary for a breakout (range high >= any range close).
-    With since (naive IST), that bar must close at or after it: a breakout that triggers
-    after `since` needs such a bar."""
+    With since (naive IST): a breakout first triggered at or after `since` means every close
+    before it stayed at or under the range high, and the trigger closed above it, so some close
+    from `since` on must beat every close before `since` (the range included)."""
     top = max(b["c"] for b in bars[:n_range])
-    return any(b["c"] >= top and (since is None or b["start"] + datetime.timedelta(minutes=BAR_MIN) >= since)
-               for b in bars[n_range:])
+    if since is None:
+        return any(b["c"] >= top for b in bars[n_range:])
+    end = lambda b: b["start"] + datetime.timedelta(minutes=BAR_MIN)
+    before = max(b["c"] for b in bars if end(b) < since) if end(bars[n_range - 1]) < since else top
+    after = [b["c"] for b in bars[n_range:] if end(b) >= since]
+    return bool(after) and max(after) > before and max(after) >= top
 
 
 def orb_hit(bars, n_range):

@@ -349,6 +349,14 @@ class Orb(unittest.TestCase):
         hits, counts, _ = scan.scan_orb(self.data, self.syms, day, cutoff, 15, 0, 0, since=since)
         self.assertEqual(len(hits), 15)                    # of the 42: the 9:55 and 10:00 triggers
         self.assertTrue(all(h["at"] in ("9:55 AM", "10:00 AM") for h in hits))
+        self.assertEqual(counts["candidates"], 51)          # of 95: a close since 9:55 beat every close before
+        for t in ("09:35", "09:45", "09:50"):               # never loses a fresh breakout
+            s2 = datetime.datetime.combine(day, datetime.time(*map(int, t.split(":"))))
+            fresh, _, _ = scan.scan_orb(self.data, self.syms, day, cutoff, 15, 0, 0, since=s2)
+            allh, _, _ = scan.scan_orb(self.data, self.syms, day, cutoff, 15, 0, 0)
+            self.assertEqual({h["symbol"] for h in fresh},
+                             {h["symbol"] for h in allh
+                              if datetime.datetime.strptime(h["at"], "%I:%M %p").time() >= s2.time()})
         _, every, _ = scan.scan_orb(self.data, self.syms, day, cutoff, 15, 0, 0)
         self.assertLess(counts["candidates"], every["candidates"])   # stage 1 skips charts that broke out earlier
         self.assertEqual(counts.get("older", 0) + len(hits) + (every["candidates"] - counts["candidates"])
