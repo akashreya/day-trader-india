@@ -135,5 +135,57 @@ class Cli(unittest.TestCase):
         self.assertIn("no symbols", err)
 
 
+
+class _Resp(object):
+    def __init__(self, data):
+        self.data, self.headers = data, {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return self.data
+
+
+class _Opener(object):
+    """Yahoo answers; nseindia.com hangs until the read times out (as it did live on 2 Nov 2026)."""
+    def __init__(self):
+        self.calls = []
+
+    def open(self, req, timeout=None):
+        url = req.full_url
+        self.calls.append(url)
+        if "nseindia.com" in url:
+            raise TimeoutError("The read operation timed out")
+        return _Resp(read("yahoo-TSLA.xml"))
+
+
+class Network(unittest.TestCase):
+    def fetcher(self):
+        f = news.Fetcher(pause=0)
+        f._opener = _Opener()
+        return f
+
+    def test_a_read_timeout_is_an_error_not_a_crash(self):
+        f = self.fetcher()
+        with self.assertRaises(news.NewsError) as ctx:
+            f.get(news.NSE_ANN % "RELIANCE", "x.json", site="nse")
+        self.assertIn("could not reach www.nseindia.com", str(ctx.exception))
+
+    def test_a_dead_host_is_tried_once_per_run(self):
+        f = self.fetcher()
+        errors = []
+        now = datetime.datetime(2026, 11, 2, 4, 40, tzinfo=UTC)
+        news.collect(f, ["RELIANCE", "TCS"], {}, now=now, errors=errors)
+        nse = [u for u in f._opener.calls if "nseindia.com" in u]
+        self.assertEqual(len(nse), 1)            # the home page, once; then skipped
+        self.assertEqual(len(errors), 2)
+        self.assertTrue(all("nseindia.com" in e for e in errors))
+        self.assertIn("(skipped)", errors[1])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -110,6 +110,16 @@ def ist_to_utc(local):
     return local.replace(tzinfo=None) - IST
 
 
+def ist_label(stamp):
+    """'2026-11-02T04:47:43Z' (UTC) -> '2026-11-02 10:17:43 IST'; '' stays ''."""
+    if not stamp:
+        return ""
+    try:
+        return (parse_now(stamp) + IST).strftime("%Y-%m-%d %H:%M:%S IST")
+    except AlertError:
+        return stamp
+
+
 def parse_now(text):
     """ISO time -> naive UTC. A time without an offset is taken as India time (IST)."""
     if not text:
@@ -541,7 +551,7 @@ def cmd_quote(a):
                 chg = ""
                 if q.get("prev_close"):
                     chg = " (%+.2f%% vs prev close Rs %.2f)" % (100.0 * (q["price"] / q["prev_close"] - 1), q["prev_close"])
-                print("%-6s Rs %.2f%s  %s  [%s]" % (s, q["price"], chg, q.get("time", ""), q["source"]))
+                print("%-6s Rs %.2f%s  %s  [%s]" % (s, q["price"], chg, ist_label(q.get("time", "")), q["source"]))
         for e in errors:
             print("error: " + e)
         if a.write and quotes:

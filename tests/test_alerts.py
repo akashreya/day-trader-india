@@ -434,5 +434,12 @@ class Cli(unittest.TestCase):
         self.assertIn("no rules", err)
 
 
+
+class QuoteTime(unittest.TestCase):
+    def test_quote_times_print_in_ist(self):
+        self.assertEqual(alerts.ist_label("2026-11-02T04:47:43Z"), "2026-11-02 10:17:43 IST")
+        self.assertEqual(alerts.ist_label(""), "")
+
+
 if __name__ == "__main__":
     unittest.main()

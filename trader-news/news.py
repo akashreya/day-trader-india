@@ -154,12 +154,16 @@ class Fetcher(object):
         self._jar = http.cookiejar.CookieJar()
         self._opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self._jar))
         self._nse_ready = False
+        self._down = {}          # host -> why it failed: skip it for the rest of the run
 
     def _open(self, url, headers):
         gap = time.time() - self._last
         if gap < self.pause:
             time.sleep(self.pause - gap)
         self._last = time.time()
+        host = url.split("/")[2]
+        if host in self._down:
+            raise NewsError(self._down[host] + " (skipped)")
         req = urllib.request.Request(url, headers=headers)
         try:
             with self._opener.open(req, timeout=30) as resp:
@@ -170,7 +174,11 @@ class Fetcher(object):
         except urllib.error.HTTPError as exc:
             raise NewsError("HTTP %s for %s" % (exc.code, url.split("?")[0]))
         except urllib.error.URLError as exc:
-            raise NewsError("could not reach %s: %s" % (url.split("/")[2], exc.reason))
+            self._down[host] = "could not reach %s: %s" % (host, exc.reason)
+            raise NewsError(self._down[host])
+        except (TimeoutError, OSError) as exc:      # a read timeout is not a URLError
+            self._down[host] = "could not reach %s: %s" % (host, exc or "timed out")
+            raise NewsError(self._down[host])
 
     def get(self, url, name, site=None):
         if self.offline:
