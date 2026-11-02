@@ -770,11 +770,14 @@ def usable(bars, day, cutoff, n_range):
     return all(b["start"] == slot(day, k) for k, b in enumerate(bars))
 
 
-def orb_candidate(bars, n_range):
+def orb_candidate(bars, n_range, since=None):
     """Stage 1, closes only: some completed bar after the range closed at or above
-    the highest close of the range. Necessary for a breakout (range high >= any range close)."""
+    the highest close of the range. Necessary for a breakout (range high >= any range close).
+    With since (naive IST), that bar must close at or after it: a breakout that triggers
+    after `since` needs such a bar."""
     top = max(b["c"] for b in bars[:n_range])
-    return any(b["c"] >= top for b in bars[n_range:])
+    return any(b["c"] >= top and (since is None or b["start"] + datetime.timedelta(minutes=BAR_MIN) >= since)
+               for b in bars[n_range:])
 
 
 def orb_hit(bars, n_range):
@@ -788,10 +791,16 @@ def orb_hit(bars, n_range):
         b = bars[k]
         if b["c"] > oh:
             closes_at = b["start"] + datetime.timedelta(minutes=BAR_MIN)
+            last = bars[-1]
             return {"price": round(b["c"], 2), "at": clock_label(closes_at),
                     "bar_start": b["start"].strftime("%H:%M"), "bar_index": k,
                     "or_high": round(oh, 2), "or_low": round(ol, 2),
-                    "pct_over": round((b["c"] / oh - 1) * 100, 2), "_t": closes_at}
+                    "pct_over": round((b["c"] / oh - 1) * 100, 2), "_t": closes_at,
+                    "last": round(last["c"], 2),
+                    "last_at": clock_label(last["start"] + datetime.timedelta(minutes=BAR_MIN)),
+                    "pct_since": round((last["c"] / b["c"] - 1) * 100, 2),
+                    "minutes_ago": int((last["start"] + datetime.timedelta(minutes=BAR_MIN)
+                                        - closes_at).total_seconds() // 60)}
     return None
 
 
@@ -835,7 +844,7 @@ def orb_window(now_utc, at, or_minutes, until, explicit_day=None):
 
 
 def scan_orb(stage1, symbols, day, cutoff, or_minutes, min_price=0.0, min_volume=0, confirm=None,
-             max_confirm=None):
+             max_confirm=None, since=None):
     """stage1 = {SYM: series} with closes (spark or v8). confirm(sym) -> series with highs/lows
     (None = use the stage-1 series). With confirm and max_confirm, only the max_confirm most
     traded candidates (price x volume so far) are confirmed; the rest are counted as unconfirmed.
@@ -858,7 +867,7 @@ def scan_orb(stage1, symbols, day, cutoff, or_minutes, min_price=0.0, min_volume
             counts["illiquid"] += 1
             continue
         counts["scanned"] += 1
-        if orb_candidate(bars, n_range):
+        if orb_candidate(bars, n_range, since):
             cands.append((sym, bars, bars[-1]["c"] * vol))
     counts["candidates"] = len(cands)
     if confirm is not None and max_confirm and len(cands) > max_confirm:
@@ -879,6 +888,9 @@ def scan_orb(stage1, symbols, day, cutoff, or_minutes, min_price=0.0, min_volume
                 continue
         counts["confirmed"] += 1
         h = orb_hit(full, n_range)
+        if h and since is not None and h["_t"] < since:
+            counts["older"] = counts.get("older", 0) + 1
+            continue
         if h:
             hits.append(dict({"symbol": sym, "setups": ["orb"]}, **h))
     hits.sort(key=lambda x: (x["_t"], x["symbol"]))
@@ -1187,8 +1199,11 @@ def cmd_orb(a):
             if len(done) % 50 == 0:
                 progress(a, "  stage 2: %d v8 charts so far" % len(done))
             return parse_chart(yahoo_get(chart_path(sym, rng, "%dm" % BAR_MIN)), sym)
+    since = None
+    if a.since:
+        since = datetime.datetime.combine(day, parse_hhmm(a.since, "--since"))
     hits, counts, failed2 = scan_orb(data, symbols, day, cutoff, a.or_minutes, a.min_price, a.min_volume, confirm,
-                                     a.max_confirm)
+                                     a.max_confirm, since)
     failed = dict(failed or {})
     failed.update(failed2)
     nfailed = len([s for s in symbols if s in failed])
@@ -1196,6 +1211,7 @@ def cmd_orb(a):
     doc = {"created_by": "trader-scanner", "created_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "mode": "orb",
            "as_of": as_of, "universe": len(symbols), "scanned": counts["scanned"], "failed": nfailed,
            "unconfirmed": counts["unconfirmed"], "source": "yahoo", "or_minutes": a.or_minutes,
+           "since": since.strftime("%H:%M") if since else None,
            "interval": "%dm" % BAR_MIN,
            "filters": {"min_price": a.min_price, "min_volume": a.min_volume}, "note": NOTE, "hits": hits}
     if a.offline:
@@ -1216,13 +1232,18 @@ def cmd_orb(a):
     if counts["unconfirmed"]:
         print("PARTIAL: %s more candidates were not checked (only the %s most traded are; --max-confirm 0 "
               "checks all)." % ("{:,}".format(counts["unconfirmed"]), "{:,}".format(a.max_confirm)))
+    if since and counts.get("older"):
+        print("Left out %d older breakout%s (triggered before %s)." % (
+            counts["older"], "" if counts["older"] == 1 else "s", clock_label(since)))
     if hits:
-        print("%d of %s charts closed above their opening-range high by %s:"
+        print("%d of %s charts closed above their opening-range high %s %s:"
               % (len(hits), ("the %s checked" % "{:,}".format(counts["confirmed"])) if counts["unconfirmed"]
-                 else "{:,}".format(counts["scanned"]), clock_label(cutoff)))
+                 else "{:,}".format(counts["scanned"]),
+                 "between %s and" % clock_label(since) if since else "by", clock_label(cutoff)))
         for h in hits[:a.show]:
-            print("  %8s  %-6s %10s  range %s to %s  %+.2f%% over" % (
-                h["at"], h["symbol"], money(h["price"]), _p(h["or_low"]), _p(h["or_high"]), h["pct_over"]))
+            print("  %8s  %-6s %10s  range %s to %s  %+.2f%% over   now %s (%+.2f%%, %d min later)" % (
+                h["at"], h["symbol"], money(h["price"]), _p(h["or_low"]), _p(h["or_high"]), h["pct_over"],
+                _p(h["last"]), h["pct_since"], h["minutes_ago"]))
         if len(hits) > a.show:
             print("  ... and %d more in the watchlist (--show N for more)." % (len(hits) - a.show))
     else:
@@ -1276,6 +1297,8 @@ def main(argv=None):
     p = sub.add_parser("orb", help="opening-range breakouts so far today")
     common(p, 50.0, 0)
     p.add_argument("--or-minutes", type=int, default=15)
+    p.add_argument("--since", help="only breakouts that triggered at or after HH:MM IST (fresh ones; "
+                   "checks far fewer charts late in the morning)")
     p.add_argument("--max-confirm", type=int, default=MAX_CONFIRM,
                    help="v8 charts to fetch in stage 2, most traded first (%d; 0 = all)" % MAX_CONFIRM)
     p.add_argument("--at", help="cut the clock at this India time (IST), HH:MM")

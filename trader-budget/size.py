@@ -72,6 +72,7 @@ DEFAULTS = {
     "max_trades_per_day": 3,
     "max_orders_per_day": 10,
     "min_reward_risk": 1.0,
+    "min_net_reward_risk": 1.5,
     "require_stop": True,
     "no_entries_before": "09:30",
     "no_entries_after": "14:30",
@@ -83,7 +84,6 @@ DEFAULTS = {
     "allow_options": False,
     "allow_margin": False,
     "allow_short": False,
-    "pdt_guard": False,
 }
 EPS = 1e-9
 FRESH_MINUTES = 15
@@ -439,6 +439,13 @@ def size_trade(plan, cfg, budget=None, limit=None, price=None, cash=None, today=
         refusal = ("reward:risk %.2f (target %s, entry %s, stop %s) is under your minimum %s, so trader-risk "
                    "would block it. No order. Skip it, or make a new plan with trader-exit."
                    % (reward_c / float(risk_c), _price(target), _price(ref), _price(stop), _num(c["min_reward_risk"])))
+    elif (_f(c.get("min_net_reward_risk")) and net_loss > 0 and net_gain > 0
+          and net_gain / net_loss < _f(c["min_net_reward_risk"]) - EPS):
+        refusal = ("after charges reward:risk is %.2f (make %s at the target, lose %s at the stop, %s and %s of "
+                   "it charges), under your minimum %s after charges. No order: the edge is gone. Skip it, or "
+                   "make a new plan with trader-exit." % (net_gain / net_loss, money(net_gain), money(net_loss),
+                                                          money(ch_target), money(ch_stop),
+                                                          _num(c["min_net_reward_risk"])))
     elif net_gain <= 0:
         refusal = ("at the target %d share%s make %s before charges and %s after them (STT, exchange, GST, "
                    "stamp, brokerage %s). No order: the target does not even pay the costs."

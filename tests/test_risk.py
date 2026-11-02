@@ -10,7 +10,10 @@ from _load import load, ROOT, FIX
 
 check = load("trader-risk", "check")
 
-CFG_PATH = os.path.join(ROOT, "trader-budget", "config.example.json")
+# The reel trade is a 1R target: about 0.88 after charges, under the shipped 1.5 floor. These tests
+# check everything else on it, so they use the shipped config with "min_net_reward_risk": 0.
+CFG_PATH = os.path.join(FIX, "trader-budget", "config-reel.json")
+EXAMPLE_CFG = os.path.join(ROOT, "trader-budget", "config.example.json")
 TSLA_PATH = os.path.join(FIX, "trader-risk", "orders-tsla.json")
 V1_ORDERS_PATH = os.path.join(FIX, "trader-risk", "orders-reel.json")
 NOW = "2026-10-19 10:00"
@@ -275,22 +278,18 @@ class DayTradeChecks(unittest.TestCase):
         self.assertEqual(at("2026-10-19 10:00"), datetime.datetime(2026, 10, 19, 4, 30))
         self.assertEqual(at("2026-12-01 10:00"), datetime.datetime(2026, 12, 1, 4, 30))
 
-    def test_pdt_guard(self):
-        def trade(day):
-            return [placed("X" + day[-2:], day=day), placed("X" + day[-2:], side="sell", day=day, kind="exit",
-                                                            status="filled", max_loss=None)]
-        st = {"orders": trade("2026-10-13") + trade("2026-10-14") + trade("2026-10-15")}
-        self.assertEqual(verdicts(self.one(tsla())), ["PASS"])
-        res = check.check([tsla()], cfg(pdt_guard=True), state=st, now=at(NOW))
-        self.assertIn("pdt: 3 day trades in the last 5 business days", reasons(res))
-        self.assertEqual(verdicts(check.check([tsla()], cfg(), state=st, now=at(NOW))), ["PASS"])
-        old = {"orders": trade("2026-10-12") + trade("2026-10-14") + trade("2026-10-15")}
-        self.assertEqual(verdicts(check.check([tsla()], cfg(pdt_guard=True), state=old, now=at(NOW))), ["PASS"])
-        pending = {"orders": trade("2026-10-14") + trade("2026-10-15") + [placed("AMD")]}
-        res = check.check([tsla()], cfg(pdt_guard=True), state=pending, now=at(NOW))
-        self.assertIn("pdt: 3 day trades", reasons(res))
-        buy_only = {"orders": [placed("AMD", day="2026-10-15"), placed("NVDA", day="2026-10-16")]}
-        self.assertEqual(check.day_trades(buy_only, TODAY)[0], 0)
+    def test_reward_risk_after_charges(self):
+        # the reel trade: 1.00 before charges, 0.88 after (437.60 gain / 499.40 loss on 80 shares)
+        o = tsla(qty="80")
+        full = dict(cfg(), **json.load(open(CFG_PATH)))           # Rs 1,00,000, Rs 500 max loss, charges on
+        self.assertEqual(verdicts(check.check([o], full, now=at(NOW))), ["PASS"])
+        res = check.check([o], dict(full, min_net_reward_risk=1.5), now=at(NOW))
+        self.assertEqual(verdicts(res), ["BLOCK"])
+        self.assertIn("reward:risk after charges: 0.88", reasons(res))
+        self.assertIn("under your minimum 1.5 after charges", reasons(res))
+        with open(EXAMPLE_CFG) as fh:
+            self.assertEqual(json.load(fh)["min_net_reward_risk"], 1.5)        # on as shipped
+        self.assertNotIn("pdt_guard", json.load(open(EXAMPLE_CFG)))          # a US rule, gone
 
     def test_a_short_entry_when_allowed(self):
         short = {"symbol": "TSLA", "side": "sell", "qty": "8", "type": "market", "time_in_force": "day",

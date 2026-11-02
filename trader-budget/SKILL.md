@@ -61,7 +61,8 @@ If `trader/config.json` does not exist, copy `config.example.json` into
 - **max_position_pct**, **max_order_inr**, **min_order_inr**: the biggest position (75% of the
   budget), the biggest order (Rs 80,000) and the smallest order (Rs 100).
 - The day limits trader-risk enforces: **max_daily_loss_inr** (1,500), **max_trades_per_day** (3),
-  **min_reward_risk** (1.0), **require_stop** (true), **no_entries_before** / **no_entries_after**
+  **min_reward_risk** (1.0), **min_net_reward_risk** (1.5: the same after charges, so a late
+  entry whose edge the charges eat is refused), **require_stop** (true), **no_entries_before** / **no_entries_after**
   ("09:30" / "14:30") and **flat_by** ("15:00"), all IST.
 - **charges**: the broker's rates. The defaults are the usual discount-broker intraday rates:
   brokerage 0.03% capped at Rs 20 an order, STT 0.025% on the sell, NSE transaction 0.00297%
@@ -92,7 +93,8 @@ minutes old) and higher. A price that ran up since the plan means a bigger
 loss at the same stop, so fewer shares. A lower price never shrinks the risk.
 
 It refuses, and writes no order, when: the size is zero shares, the order is
-under the minimum, reward:risk is under `min_reward_risk`, the target does not
+under the minimum, reward:risk is under `min_reward_risk` (or under
+`min_net_reward_risk` after charges), the target does not
 pay the charges, the stop is not below the entry, the target is not above it
 (the move already happened), the plan is for another day, the symbol is
 blocked, or the plan is a short. Say the reason to the user in one line.

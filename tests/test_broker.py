@@ -11,7 +11,10 @@ from _load import load, ROOT, FIX
 ticket = load("trader-broker", "ticket")
 check = load("trader-risk", "check")
 
-CFG_PATH = os.path.join(ROOT, "trader-budget", "config.example.json")
+# The reel trade is a 1R target: about 0.88 after charges, under the shipped 1.5 floor. These tests
+# check everything else on it, so they use the shipped config with "min_net_reward_risk": 0.
+CFG_PATH = os.path.join(FIX, "trader-budget", "config-reel.json")
+EXAMPLE_CFG = os.path.join(ROOT, "trader-budget", "config.example.json")
 ORDERS_PATH = os.path.join(FIX, "trader-risk", "orders-tsla.json")
 PLAN_PATH = os.path.join(FIX, "trader-budget", "plan-tsla.json")
 NOW = "2026-10-19 10:00"

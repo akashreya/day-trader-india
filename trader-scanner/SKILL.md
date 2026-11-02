@@ -34,6 +34,7 @@ python3 "${CLAUDE_SKILL_DIR}/scan.py" daily                          # before th
 python3 "${CLAUDE_SKILL_DIR}/scan.py" daily --symbols RELIANCE,TCS,INFY  # or --watchlist FILE, --limit 200
 python3 "${CLAUDE_SKILL_DIR}/scan.py" orb                            # after 9:35 AM IST -> trader/watchlist.json
 python3 "${CLAUDE_SKILL_DIR}/scan.py" orb --at 10:00                 # cut the clock at 10:00 AM IST
+python3 "${CLAUDE_SKILL_DIR}/scan.py" orb --since 10:35              # only breakouts from 10:35 on (fresh ones)
 python3 "${CLAUDE_SKILL_DIR}/scan.py" orb --watchlist trader/watchlist.json --json
 ```
 
@@ -165,7 +166,12 @@ their last bars of the day are not like the others.
    liquid, scanned, hits) and the top few by setup.
 3. After 9:35 AM IST (10:00 is the classic): `scan.py orb`. Tell the user how
    many usable charts broke their range and when, and that a later hit is
-   closer to the price now.
+   closer to the price now. Later in the morning, when most hits are old, run
+   `scan.py orb --since HH:MM` (about 20 minutes ago) instead: it checks only
+   charts that could have broken out since then, so it is faster and nothing
+   is left unconfirmed. Every hit already carries `last`, `last_at`,
+   `pct_since` and `minutes_ago` (the price now against the trigger): use
+   those, never write your own code to price the hits again.
 4. The user picks one chart. Hand it on: `/trader-news SYMBOL` (the filings
    and headlines moving it), then `/trader-entry SYMBOL` (the entry bar by
    bar). Never pick for them.

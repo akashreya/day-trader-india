@@ -166,7 +166,7 @@ class Fetcher(object):
             raise NewsError(self._down[host] + " (skipped)")
         req = urllib.request.Request(url, headers=headers)
         try:
-            with self._opener.open(req, timeout=30) as resp:
+            with self._opener.open(req, timeout=12 if "nseindia.com" in host or "bseindia.com" in host else 30) as resp:
                 data = resp.read()
                 if resp.headers.get("Content-Encoding") == "gzip":
                     data = gzip.decompress(data)

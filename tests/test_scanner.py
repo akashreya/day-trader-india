@@ -343,6 +343,17 @@ class Orb(unittest.TestCase):
         day, cutoff = scan.orb_window(scan.parse_now(now), None, or_minutes, datetime.time(15, 30))
         return scan.scan_orb(self.data, syms or self.syms, day, cutoff, or_minutes, min_price, 0)
 
+    def test_since_keeps_only_fresh_breakouts(self):
+        day, cutoff = scan.orb_window(scan.parse_now("2026-10-19 10:00"), None, 15, datetime.time(15, 30))
+        since = datetime.datetime.combine(day, datetime.time(9, 55))
+        hits, counts, _ = scan.scan_orb(self.data, self.syms, day, cutoff, 15, 0, 0, since=since)
+        self.assertEqual(len(hits), 15)                    # of the 42: the 9:55 and 10:00 triggers
+        self.assertTrue(all(h["at"] in ("9:55 AM", "10:00 AM") for h in hits))
+        _, every, _ = scan.scan_orb(self.data, self.syms, day, cutoff, 15, 0, 0)
+        self.assertLess(counts["candidates"], every["candidates"])   # stage 1 skips charts that broke out earlier
+        self.assertEqual(counts.get("older", 0) + len(hits) + (every["candidates"] - counts["candidates"])
+                         >= 42, True)
+
     def test_the_reel_scan_at_1015(self):
         hits, counts, failed = self.scan_at("2026-10-19 10:00")
         self.assertEqual(len(self.syms), 234)
@@ -353,8 +364,11 @@ class Orb(unittest.TestCase):
         tsla = [h for h in hits if h["symbol"] == "TSLA"][0]
         self.assertEqual(tsla, {"symbol": "TSLA", "setups": ["orb"], "price": 364.18, "at": "10:00 AM",
                                 "bar_start": "09:55", "bar_index": 8, "or_high": 362.18, "or_low": 354.47,
-                                "pct_over": 0.55})
+                                "pct_over": 0.55, "last": 364.18, "last_at": "10:00 AM", "pct_since": 0.0, "minutes_ago": 0})
         self.assertEqual(hits[0]["symbol"], "AMC")         # sorted by time, then symbol
+        amc = hits[0]                                      # 9:35 trigger, priced again at the cutoff
+        self.assertEqual((amc["last"], amc["last_at"], amc["pct_since"], amc["minutes_ago"]),
+                         (2.94, "10:00 AM", -1.17, 25))
         self.assertEqual([h["at"] for h in hits], sorted([h["at"] for h in hits], key=lambda x: scan.parse_hhmm(
             x[:-3]).hour % 12 * 60 + int(x[-5:-3])))
         self.assertEqual(sum(1 for h in hits if h["at"] == "10:00 AM"), 11)
@@ -483,7 +497,8 @@ class LiveFiveMinute(unittest.TestCase):
         # range 9:15 to 9:45: high 370.49 (the 9:15 bar), low 363.64; the 9:40 bar closed 370.585
         self.assertEqual(hits, [{"symbol": "TSLA", "setups": ["orb"], "price": 370.58, "at": "9:45 AM",
                                  "bar_start": "09:40", "bar_index": 5, "or_high": 370.49, "or_low": 363.64,
-                                 "pct_over": 0.03}])
+                                 "pct_over": 0.03, "last": 370.58, "last_at": "9:45 AM", "pct_since": 0.0,
+                                 "minutes_ago": 0}])
         self.assertEqual(counts["illiquid"], 1)            # AMC under the Rs 5 floor
 
     def test_stage_two_cap_takes_the_most_traded(self):
@@ -557,7 +572,8 @@ class Cli(unittest.TestCase):
                           "as_of": "2026-10-19 10:00 IST", "universe": 234, "scanned": 231, "source": "yahoo"})
         self.assertEqual(len(doc["hits"]), 42)
         self.assertIn({"symbol": "TSLA", "setups": ["orb"], "price": 364.18, "at": "10:00 AM", "bar_start": "09:55",
-                       "bar_index": 8, "or_high": 362.18, "or_low": 354.47, "pct_over": 0.55}, doc["hits"])
+                       "bar_index": 8, "or_high": 362.18, "or_low": 354.47, "pct_over": 0.55,
+                       "last": 364.18, "last_at": "10:00 AM", "pct_since": 0.0, "minutes_ago": 0}, doc["hits"])
 
         # the hits read back as a watchlist, with --at instead of --now
         code, text, _ = run(["orb", "--offline", WALL, "--at", "10:00", "--watchlist", self.wl, "--min-price", "0",

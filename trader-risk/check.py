@@ -44,7 +44,9 @@ What blocks an entry (on top):
                 the limit price for a limit order, else the HIGHER of the plan's
                 entry and a fresh price (under 15 minutes old), so a stale plan
                 cannot understate the risk
-  reward:risk   (target - entry) / (entry - stop) under min_reward_risk
+  reward:risk   (target - entry) / (entry - stop) under min_reward_risk, or the
+                same after charges (gain at the target less its charges / loss at
+                the stop plus its charges) under min_net_reward_risk (1.5)
   daily loss    the max losses at the stops of today's entries plus this one
                 over max_daily_loss_inr (win or lose, each counts in full)
   trades        max_trades_per_day entries already placed today
@@ -72,10 +74,9 @@ import sys
 DEFAULTS = {
     "budget": None, "cash_buffer_pct": 10, "max_position_pct": 75, "max_order_inr": 80000,
     "min_order_inr": 100, "max_loss_per_trade_inr": 500, "max_daily_loss_inr": 1500, "max_trades_per_day": 3,
-    "max_orders_per_day": 10, "min_reward_risk": 1.0, "require_stop": True,
+    "max_orders_per_day": 10, "min_reward_risk": 1.0, "min_net_reward_risk": 1.5, "require_stop": True,
     "no_entries_before": "09:30", "no_entries_after": "14:30", "flat_by": "15:00",
     "paper": True, "blocked": [], "allow_options": False, "allow_margin": False, "allow_short": False,
-    "pdt_guard": False,
 }
 ORDER_FIELDS = ("symbol", "exchange", "product", "side", "qty", "notional", "type", "time_in_force", "limit_price",
                  "stop_price", "trail_price", "trail_percent", "extended_hours", "client_order_id",
@@ -405,7 +406,6 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
             loss_today += ml
     placed_keys = {(str(r.get("symbol", "")).upper(), r.get("side")) for r in done_today}
     win_reasons, win_warns = window_check(now_et, c)
-    pdt_n, pdt_list = day_trades(state, today) if c.get("pdt_guard") else (0, [])
     seen = set()
     results = []
     batch_entries, batch_loss = 0, 0.0
@@ -576,7 +576,7 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
                 reasons.append("short: selling more %s than you hold (%s shares); short selling is off. "
                                "If you bought it, record the fill first (ticket.py fill)" % (sym, _num(held)))
 
-        # day-trade checks: stop, loss, reward:risk, daily loss, trades, window, pdt
+        # day-trade checks: stop, loss, reward:risk, daily loss, trades, window
         max_loss = risk_ps = rr = stop = target = None
         charges = 0.0
         if kind == "entry" and side in ("buy", "sell"):
@@ -623,6 +623,15 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
                             if min_rr and rr < min_rr - 1e-9:
                                 later.append("reward:risk: %.2f (target %s, entry %s, stop %s) is under your "
                                              "minimum %s" % (rr, _p(target), _p(ref), _p(stop), _num(min_rr)))
+                            min_net = _f(c.get("min_net_reward_risk"))
+                            if min_net and shares:
+                                gain = shares * abs(target - ref) - intraday_charges(
+                                    shares, ref if long else target, target if long else ref, c, exchange_of(sym))
+                                net_rr = round(gain / max_loss, 2) if max_loss else None
+                                if net_rr is not None and net_rr < min_net - 1e-9:
+                                    later.append("reward:risk after charges: %.2f (gain %s at the target, loss %s "
+                                                 "at the stop, charges included) is under your minimum %s after "
+                                                 "charges" % (net_rr, money(gain), money(max_loss), _num(min_net)))
                     elif min_rr:
                         later.append("reward:risk: no target to measure it against (min_reward_risk %s)"
                                      % _num(min_rr))
@@ -638,10 +647,6 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
                 later.append("trades: %d entries placed today plus %d passed earlier in this batch, your limit "
                              "is %d a day" % (len(entries_today), batch_entries, cap_t))
             later.extend(win_reasons)
-            if c.get("pdt_guard") and pdt_n >= 3:
-                later.append("pdt: %d day trades in the last 5 business days (%s); a 4th trips the "
-                             "pattern-day-trader rule your broker applies (\"pdt_guard\": true)"
-                             % (pdt_n, ", ".join(pdt_list)))
             if stop and ref and risk_ps:
                 info.append("entry %s (%s), stop %s, target %s: risk %s a share"
                             % (_p(ref), REF_WORDS.get(ref_from, ref_from), _p(stop),
@@ -716,7 +721,7 @@ def check(orders, cfg, portfolio=None, prices=None, state=None, today=None, now=
         "warnings": top_warn,
         "cash_after": round(acct["cash"], 2),
         "today": {"orders_placed": count_today, "entries_placed": len(entries_today),
-                  "loss_at_risk": round(loss_today, 2), "day_trades_5d": pdt_n if c.get("pdt_guard") else None},
+                  "loss_at_risk": round(loss_today, 2)},
     }
 
 

@@ -9,7 +9,10 @@ from _load import load, ROOT, FIX
 
 size = load("trader-budget", "size")
 
-CFG = os.path.join(ROOT, "trader-budget", "config.example.json")
+# The reel trade is a 1R target: about 0.88 after charges, under the shipped 1.5 floor. These tests
+# check everything else on it, so they use the shipped config with "min_net_reward_risk": 0.
+CFG = os.path.join(FIX, "trader-budget", "config-reel.json")
+EXAMPLE_CFG = os.path.join(ROOT, "trader-budget", "config.example.json")
 PLAN = os.path.join(FIX, "trader-budget", "plan-tsla.json")
 TARGETS = os.path.join(ROOT, "trader-budget", "targets.example.json")
 TOP5 = os.path.join(FIX, "trader-budget", "weights-top5.json")
@@ -21,10 +24,10 @@ PRICES = {"RELIANCE": 341.27, "HDFCBANK": 309.84, "INFY": 353.78, "ITC": 90.11, 
 CONTRACT_CFG = {
     "budget": 100000, "cash_buffer_pct": 10, "max_position_pct": 75, "max_order_inr": 80000, "min_order_inr": 100,
     "max_loss_per_trade_inr": 500, "max_daily_loss_inr": 1500, "max_trades_per_day": 3, "max_orders_per_day": 10,
-    "min_reward_risk": 1.0, "require_stop": True,
+    "min_reward_risk": 1.0, "min_net_reward_risk": 1.5, "require_stop": True,
     "no_entries_before": "09:30", "no_entries_after": "14:30", "flat_by": "15:00",
     "fractional": False, "broker": "paper", "paper": True, "blocked": [],
-    "allow_options": False, "allow_margin": False, "allow_short": False, "pdt_guard": False,
+    "allow_options": False, "allow_margin": False, "allow_short": False,
     "charges": {"brokerage_per_order": 20, "brokerage_pct": 0.03, "stt_sell_pct": 0.025, "txn_pct": 0.00297, "txn_pct_bse": 0.00375,
                 "sebi_pct": 0.0001, "stamp_buy_pct": 0.003, "gst_pct": 18},
 }
@@ -78,7 +81,7 @@ class TheReel(unittest.TestCase):
     """Rs 1,00,000, 10% buffer, Rs 500 max loss incl. charges, risk 5.86 -> 80 shares, Rs 29,134.40."""
 
     def test_config_example_is_the_contract(self):
-        with open(CFG) as fh:
+        with open(EXAMPLE_CFG) as fh:
             self.assertEqual(json.load(fh), CONTRACT_CFG)
 
     def test_80_shares_bound_by_the_max_loss_after_charges(self):
@@ -97,6 +100,13 @@ class TheReel(unittest.TestCase):
         self.assertEqual((s["charges_at_stop"], s["charges_at_target"]), (30.6, 31.2))
         self.assertEqual((s["net_loss_at_stop"], s["net_gain_at_target"], s["net_reward_risk"]), (499.4, 437.6, 0.88))
         self.assertIsNone(s["refusal"])
+
+    def test_the_floor_after_charges(self):
+        s = size.size_trade(plan(), cfg(min_net_reward_risk=1.5), today=TODAY)
+        self.assertEqual(s["net_reward_risk"], 0.88)
+        self.assertIn("after charges reward:risk is 0.88", s["refusal"])
+        self.assertIn("the edge is gone", s["refusal"])
+        self.assertIsNone(size.size_trade(plan(), cfg(min_net_reward_risk=0.8), today=TODAY)["refusal"])
 
     def test_the_charges(self):
         # 80 x 364.18 bought, 80 x 358.32 sold: brokerage 0.03 % (under Rs 20 an order), STT 0.025 % of the

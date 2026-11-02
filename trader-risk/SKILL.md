@@ -96,7 +96,10 @@ How the numbers work:
   out in the tool, never from the computer's clock zone. Weekends and NSE
   holidays (the 2026 list is built in; add 2027 when NSE publishes it) are
   closed. Set both `no_entries_*` to null to switch the window off.
-- There is no pattern-day-trader rule in India. `pdt_guard` stays off.
+- **Reward:risk after charges.** `min_net_reward_risk` (1.5) blocks a trade
+  whose gain at the target, less charges, is under 1.5 times its loss at the
+  stop plus charges. A late entry can pass the plain `min_reward_risk` and
+  still fail this one: the edge is gone once charges are paid.
 
 Warnings do not block, but say them to the user: a LIVE account, a number
 sent as a number instead of a string, a stop that lives only in the plan and

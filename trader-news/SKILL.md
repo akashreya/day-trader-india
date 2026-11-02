@@ -48,9 +48,24 @@ python3 "${CLAUDE_SKILL_DIR}/news.py" --no-filings --json          # headlines o
 | Yahoo Finance chart endpoint | the last price against yesterday's close (unofficial, can lag) |
 | `trader/state/news.json` | what has been shown (kept 30 days) |
 
-NSE and BSE block some scripted clients. When they do, the tool says so in a
-note and the headlines still run; the user can save the JSON from the
-exchange's page in a browser and point `--offline` at the folder.
+NSE and BSE block scripted clients (in the live test on 2 Nov 2026 NSE's
+API timed out and BSE's answered 403, every time). When they do, the tool
+says so in a note, gives up on that site for the rest of the run, and the
+headlines still run. The filings are then **unchecked**, and that matters:
+results or a board meeting today is the biggest gap risk there is.
+
+So when the notes say a filings site could not be reached:
+
+1. If a browser tool is available (Claude in Chrome, or the built-in
+   browser), open the stock's announcements page in it and read the latest
+   filings yourself:
+   `https://www.nseindia.com/get-quotes/equity?symbol=SYMBOL` (the Corporate
+   Announcements section), or for a BSE stock
+   `https://www.bseindia.com/stock-share-price/x/y/SCRIPCODE/corp-announcements/`.
+   Reading a page in the user's browser is fine; do not script around the
+   block (no fake browser headers, no proxies).
+2. If no browser tool is available, tell the user in one line that the
+   filings are unchecked and name the stocks, before any trade on them.
 
 ## The rules
 
